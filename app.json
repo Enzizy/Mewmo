@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "Mewmo",
+    "slug": "mewmo",
+    "scheme": "mewmo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/brain-dump-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAFAFA",
+        "foregroundImage": "./assets/brain-dump-icon.png"
+      },
+      "softwareKeyboardLayoutMode": "resize",
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "package": "com.enzizy.mewmo"
+    },
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/brain-dump-icon.png"
+    },
+    "experiments": {
+      "typedRoutes": true
+    },
+    "plugins": [
+      [
+        "expo-router",
+        {
+          "headers": {
+            "Cross-Origin-Embedder-Policy": "credentialless",
+            "Cross-Origin-Opener-Policy": "same-origin"
+          }
+        }
+      ],
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/brain-dump-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#FAFAFA"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Mewmo to record your voice notes."
+        }
+      ],
+      "expo-notifications",
+      "expo-asset",
+      "expo-sqlite",
+      "expo-sharing"
+    ],
+    "extra": {
+      "router": {
+        "headers": {
+          "Cross-Origin-Embedder-Policy": "credentialless",
+          "Cross-Origin-Opener-Policy": "same-origin"
+        }
+      },
+      "eas": {
+        "projectId": "07002e24-d49d-4063-8533-80edce121d99"
+      }
+    }
+  }
+}
