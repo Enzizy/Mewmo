@@ -4,6 +4,8 @@ import { GoogleGenAI } from '@google/genai';
 import { buildOrganizerPrompt, normalizeAudioMimeType, responseSchema, validateOrganizedDump } from './organizer.mjs';
 import { loadTwelveDataQuotes } from './market.mjs';
 import { assistantSystemInstruction, buildAssistantContents, validateAssistantRequest } from './personal-assistant.mjs';
+import { loadTwelveDataExchangeRate, validateCurrencyPair } from './exchange-rate.mjs';
+import { buildTranslationContents, parseTranslationResponse, translationResponseSchema, translationSystemInstruction, validateTranslationRequest } from './translator.mjs';
 
 const port = Number(process.env.PORT || 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
@@ -11,9 +13,11 @@ const model = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
 const maxBodyBytes = 28 * 1024 * 1024;
 const requestsByAddress = new Map();
 let marketCache;
+const exchangeRateCache = new Map();
 
 const server = http.createServer(async (request, response) => {
   setCorsHeaders(response);
+  const requestUrl = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'OPTIONS') return sendJson(response, 204, null);
   if (request.method === 'GET' && request.url === '/health') {
     return sendJson(response, 200, { ok: true, configured: Boolean(process.env.GEMINI_API_KEY), marketConfigured: Boolean(process.env.TWELVE_DATA_API_KEY), model });
@@ -27,6 +31,40 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 200, value);
     } catch (error) {
       return sendJson(response, 503, { error: error instanceof Error ? error.message : 'Market prices are unavailable.' });
+    }
+  }
+  if (request.method === 'GET' && requestUrl.pathname === '/exchange-rate') {
+    if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    let pair;
+    try { pair = validateCurrencyPair(requestUrl.searchParams.get('from'), requestUrl.searchParams.get('to')); }
+    catch (error) { return sendJson(response, 400, { error: error instanceof Error ? error.message : 'Invalid currency pair.' }); }
+    try {
+      const cacheKey = `${pair.from}/${pair.to}`;
+      const cached = exchangeRateCache.get(cacheKey);
+      if (cached && Date.now() - cached.cachedAt < 10 * 60 * 1000) return sendJson(response, 200, cached.value);
+      const value = await loadTwelveDataExchangeRate({ apiKey: process.env.TWELVE_DATA_API_KEY, ...pair });
+      exchangeRateCache.set(cacheKey, { value, cachedAt: Date.now() });
+      exchangeRateCache.set(`${pair.to}/${pair.from}`, { value: { from: pair.to, to: pair.from, rate: 1 / value.rate, asOf: value.asOf, source: value.source }, cachedAt: Date.now() });
+      return sendJson(response, 200, value);
+    } catch (error) {
+      console.error(`[exchange-rate] ${error instanceof Error ? error.message : 'Provider failure'}`);
+      return sendJson(response, 503, { error: 'The live exchange rate is unavailable. Check the Twelve Data setup and try again.' });
+    }
+  }
+  if (request.method === 'POST' && requestUrl.pathname === '/translate') {
+    if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
+    if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    let input;
+    try { input = validateTranslationRequest(await readJson(request, 16 * 1024)); }
+    catch (error) { return sendJson(response, 400, { error: error instanceof Error ? error.message : 'Invalid translation request.' }); }
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const result = await ai.models.generateContent({ model, contents: buildTranslationContents(input), config: { systemInstruction: translationSystemInstruction, temperature: 0, maxOutputTokens: 3_000, responseMimeType: 'application/json', responseSchema: translationResponseSchema } });
+      if (!result.text) throw new Error('Gemini returned an empty translation.');
+      return sendJson(response, 200, parseTranslationResponse(result.text));
+    } catch (error) {
+      console.error(`[translate] ${error instanceof Error ? error.message : 'Provider failure'}`);
+      return sendJson(response, 502, { error: 'Gemini could not translate this text. Try again.' });
     }
   }
   if (request.method === 'POST' && request.url === '/chat') {

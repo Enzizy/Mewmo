@@ -8,7 +8,7 @@ export function ScreenHeader({ title, back = false, action, onBack }: { title?: 
   const goBack = onBack ?? (() => router.canGoBack() ? router.back() : router.replace('/'));
   return (
     <View style={styles.row}>
-      {back ? <Pressable accessibilityLabel="Go back" onPress={goBack} style={styles.iconButton}><Feather name="arrow-left" size={22} color={colors.ink} /></Pressable> : <View style={styles.iconSpacer} />}
+      {back ? <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={goBack} style={styles.iconButton}><Feather name="arrow-left" size={22} color={colors.ink} /></Pressable> : <View style={styles.iconSpacer} />}
       {title ? <Text numberOfLines={1} style={styles.title}>{title}</Text> : <View style={styles.grow} />}
       <View style={styles.action}>{action}</View>
     </View>

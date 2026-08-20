@@ -1,0 +1,16 @@
+import { StyleSheet, Text, View } from 'react-native';
+import { AppScreen } from '@/components/AppScreen';
+import { ScreenHeader } from '@/components/ScreenHeader';
+import { PageHeader } from '@/components/page-header';
+import { colors, fonts, radius } from '@/constants/theme';
+import { getWalletSummary } from '@/features/wallet/wallet-summary';
+import { useItems } from '@/store/ItemsContext';
+import { formatPeso } from '@/utils/money';
+
+export default function InvestmentsScreen() {
+  const data = useItems();
+  const summary = getWalletSummary(data);
+  return <AppScreen assistant><ScreenHeader back /><PageHeader title="Investments" supporting="Your recorded BTC and VOO positions with the latest available value." /><View style={styles.total}><Text style={styles.totalLabel}>{summary.hasLivePortfolio ? 'Estimated portfolio value' : 'Recorded contributions'}</Text><Text style={styles.totalValue}>{formatPeso(summary.portfolio)}</Text></View><View style={styles.list}>{summary.positions.map((position) => <View key={position.asset} style={styles.position}><View style={styles.assetMark}><Text style={styles.assetMarkText}>{position.asset.slice(0, 1)}</Text></View><View style={styles.main}><Text style={styles.asset}>{position.asset}</Text><Text style={styles.quantity}>{position.quantity} {position.asset}</Text><Text style={styles.source}>{position.quote ? `${position.quote.source} · ${new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(position.quote.asOf))}` : 'No live quote yet'}</Text></View><View style={styles.values}><Text style={styles.value}>{formatPeso(position.estimated ?? position.recorded)}</Text><Text style={styles.recorded}>{position.estimated != null ? `${formatPeso(position.recorded)} invested` : 'recorded'}</Text></View></View>)}</View></AppScreen>;
+}
+
+const styles = StyleSheet.create({ total: { marginTop: 24, padding: 20, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper }, totalLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary }, totalValue: { marginTop: 7, fontFamily: fonts.bodyBold, fontSize: 30, letterSpacing: -0.8, fontVariant: ['tabular-nums'], color: colors.ink }, list: { marginTop: 28, borderTopWidth: 1, borderTopColor: colors.border }, position: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }, assetMark: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink }, assetMarkText: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.paper }, main: { flex: 1, minWidth: 0 }, asset: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.ink }, quantity: { marginTop: 3, fontFamily: fonts.body, fontSize: 12, color: colors.secondary }, source: { marginTop: 3, fontFamily: fonts.body, fontSize: 10, color: colors.muted }, values: { maxWidth: '38%', alignItems: 'flex-end' }, value: { fontFamily: fonts.bodySemiBold, fontSize: 14, fontVariant: ['tabular-nums'], color: colors.ink }, recorded: { marginTop: 4, fontFamily: fonts.body, fontSize: 10, color: colors.secondary } });

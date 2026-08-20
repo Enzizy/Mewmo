@@ -36,30 +36,30 @@ export const spacing = {
 } as const;
 
 export const fonts = {
-  body: 'DMSans_400Regular',
-  bodyMedium: 'DMSans_500Medium',
-  bodySemiBold: 'DMSans_600SemiBold',
-  bodyBold: 'DMSans_700Bold',
-  pixel: 'Silkscreen_400Regular',
-  pixelSemiBold: 'Silkscreen_400Regular',
-  pixelBold: 'Silkscreen_700Bold',
-  editorial: 'Silkscreen_400Regular',
-  editorialSemiBold: 'Silkscreen_700Bold',
+  body: 'InstrumentSans_400Regular',
+  bodyMedium: 'InstrumentSans_500Medium',
+  bodySemiBold: 'InstrumentSans_600SemiBold',
+  bodyBold: 'InstrumentSans_700Bold',
+  pixel: 'InstrumentSans_500Medium',
+  pixelSemiBold: 'InstrumentSans_600SemiBold',
+  pixelBold: 'InstrumentSans_700Bold',
+  editorial: 'InstrumentSans_500Medium',
+  editorialSemiBold: 'InstrumentSans_700Bold',
 } as const;
 
 export const radius = {
-  sm: 4,
-  md: 6,
-  lg: 8,
+  sm: 8,
+  md: 12,
+  lg: 18,
   full: 999,
 } as const;
 
 export const type = {
-  display: { fontFamily: fonts.pixelBold, fontSize: 34, lineHeight: 36, color: colors.ink },
-  title: { fontFamily: fonts.pixelSemiBold, fontSize: 24, lineHeight: 28, color: colors.ink },
-  section: { fontFamily: fonts.pixelSemiBold, fontSize: 17, lineHeight: 21, color: colors.ink },
+  display: { fontFamily: fonts.bodyBold, fontSize: 34, lineHeight: 40, letterSpacing: -1.1, color: colors.ink },
+  title: { fontFamily: fonts.bodyBold, fontSize: 26, lineHeight: 32, letterSpacing: -0.6, color: colors.ink },
+  section: { fontFamily: fonts.bodySemiBold, fontSize: 17, lineHeight: 22, color: colors.ink },
   body: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.ink },
-  label: { fontFamily: fonts.pixelSemiBold, fontSize: 12, lineHeight: 15, color: colors.secondary },
+  label: { fontFamily: fonts.bodySemiBold, fontSize: 12, lineHeight: 16, color: colors.secondary },
   caption: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
 } as const;
 

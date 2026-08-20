@@ -6,8 +6,13 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold, useFonts } from '@expo-google-fonts/dm-sans';
-import { Silkscreen_400Regular, Silkscreen_700Bold } from '@expo-google-fonts/silkscreen';
+import {
+  InstrumentSans_400Regular,
+  InstrumentSans_500Medium,
+  InstrumentSans_600SemiBold,
+  InstrumentSans_700Bold,
+  useFonts,
+} from '@expo-google-fonts/instrument-sans';
 import { ItemsProvider } from '@/store/ItemsContext';
 import { colors } from '@/constants/theme';
 import { configureNotifications, subscribeToNotificationResponses } from '@/services/notifications';
@@ -16,7 +21,7 @@ SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
   const router = useRouter();
-  const [loaded] = useFonts({ DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold, Silkscreen_400Regular, Silkscreen_700Bold });
+  const [loaded] = useFonts({ InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
   useEffect(() => { if (loaded) SplashScreen.hideAsync(); }, [loaded]);
   useEffect(() => { configureNotifications().catch(() => undefined); }, []);
   useEffect(() => {
@@ -40,7 +45,14 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ItemsProvider>
           <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'none' }} />
+          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
+            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+            <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
+            <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
+            <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
+            <Stack.Screen name="results" options={{ animation: 'fade' }} />
+            <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
+          </Stack>
         </ItemsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

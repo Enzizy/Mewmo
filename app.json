@@ -8,7 +8,11 @@
     "icon": "./assets/brain-dump-icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.enzizy.mewmo",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -61,6 +65,22 @@
       "expo-notifications",
       "expo-asset",
       "expo-sqlite",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mewmo to select images for local conversion, compression, and resizing.",
+          "cameraPermission": false,
+          "microphonePermission": "Allow Mewmo to record your voice notes."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": false,
+          "savePhotosPermission": "Allow Mewmo to save processed images to your photo library.",
+          "granularPermissions": []
+        }
+      ],
       "expo-sharing"
     ],
     "extra": {
