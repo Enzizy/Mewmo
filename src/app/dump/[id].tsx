@@ -1,13 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { ItemRow } from '@/components/ItemRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { formatDuration, relativeDateTimeLabel } from '@/utils/date';
+import { confirmAction } from '@/utils/confirm-action';
 
 export default function DumpDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -19,10 +20,7 @@ export default function DumpDetailScreen() {
 
   if (!dump) return <AppScreen><ScreenHeader back /><View style={styles.missing}><Text style={styles.title}>Recording not found</Text></View></AppScreen>;
   const extracted = items.filter((item) => item.sourceDumpId === dump.id);
-  const remove = () => Alert.alert('Delete recording?', 'The organized records will remain in Mewmo.', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete recording', style: 'destructive', onPress: () => { deleteDump(dump.id); router.canGoBack() ? router.back() : router.replace('/'); } },
-  ]);
+  const remove = () => confirmAction({ title: 'Delete recording?', message: 'The organized records will remain in Mewmo.', confirmLabel: 'Delete recording', onConfirm: () => { deleteDump(dump.id); router.canGoBack() ? router.back() : router.replace('/'); } });
   const toggle = () => status.playing ? player.pause() : player.play();
 
   return (

@@ -1,4 +1,4 @@
-import { getOrganizerApiUrl } from './organizerApi';
+import { getOrganizerApiHeaders, getOrganizerApiUrl } from './organizerApi';
 
 export type LanguageCode = 'auto' | 'en' | 'fil' | 'es' | 'ja';
 export type TranslationResult = { translation: string; detectedLanguage: string };
@@ -9,7 +9,7 @@ export async function translateText(text: string, from: LanguageCode, to: Exclud
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
-    const response = await fetch(`${apiUrl}/translate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, from, to }), signal: controller.signal });
+    const response = await fetch(`${apiUrl}/translate`, { method: 'POST', headers: getOrganizerApiHeaders({ 'Content-Type': 'application/json' }), body: JSON.stringify({ text, from, to }), signal: controller.signal });
     const body = await response.json() as Partial<TranslationResult> & { error?: string };
     if (!response.ok) throw new Error(body.error || 'Translation failed.');
     if (typeof body.translation !== 'string' || !body.translation.trim() || typeof body.detectedLanguage !== 'string') throw new Error('The server returned an invalid translation.');

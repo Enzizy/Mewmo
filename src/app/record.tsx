@@ -8,6 +8,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { Waveform } from '@/components/Waveform';
 import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
+import { confirmAction } from '@/utils/confirm-action';
 
 const recordingOptions = { ...RecordingPresets.HIGH_QUALITY, directory: 'document' as const, isMeteringEnabled: true };
 
@@ -75,14 +76,11 @@ export default function RecordScreen() {
   };
 
   const discardRecording = () => {
-    Alert.alert('Discard recording?', 'This voice note has not been saved yet.', [
-      { text: 'Keep recording', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: async () => {
+    confirmAction({ title: 'Discard recording?', message: 'This voice note has not been saved yet.', confirmLabel: 'Discard', cancelLabel: 'Keep recording', onConfirm: async () => {
         await recorder.stop().catch(() => undefined);
         await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
         leave();
-      } },
-    ]);
+      } });
   };
 
   return (

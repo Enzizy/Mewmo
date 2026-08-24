@@ -7,11 +7,16 @@ export function getOrganizerApiUrl() {
   return (process.env.EXPO_PUBLIC_MEWMO_API_URL ?? process.env.EXPO_PUBLIC_BRAIN_DUMP_API_URL ?? process.env.EXPO_PUBLIC_GATHER_API_URL)?.trim().replace(/\/$/, '') ?? '';
 }
 
+export function getOrganizerApiHeaders(additionalHeaders: Record<string, string> = {}) {
+  const token = process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN?.trim();
+  return token ? { ...additionalHeaders, Authorization: `Bearer ${token}` } : additionalHeaders;
+}
+
 export async function checkOrganizerHealth() {
   const apiUrl = getOrganizerApiUrl();
   if (!apiUrl) return { ok: false, configured: false, message: 'API address is not configured.' };
   try {
-    const response = await fetch(`${apiUrl}/health`);
+    const response = await fetch(`${apiUrl}/health`, { headers: getOrganizerApiHeaders() });
     const body = await response.json() as { ok?: boolean; configured?: boolean };
     return {
       ok: response.ok && body.ok === true,
@@ -33,7 +38,7 @@ export async function organizeRecording(recording: PendingRecording): Promise<Or
   try {
     const response = await fetch(`${apiUrl}/organize`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getOrganizerApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         audioBase64,
         mimeType: recording.mimeType,

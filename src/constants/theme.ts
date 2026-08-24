@@ -23,6 +23,8 @@ export const colors = {
   dangerSoft: '#FCE8E6',
   catRed: '#D92336',
   catYellow: '#FFD400',
+  bitcoin: '#F7931A',
+  vanguard: '#C8102E',
 } as const;
 
 export const spacing = {

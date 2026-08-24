@@ -19,7 +19,7 @@ export default function WalletScreen() {
 
   const chooseCurrency = (next: DisplayCurrency) => {
     if (next === 'USD' && !summary.usdPhp) {
-      Alert.alert('USD rate unavailable', 'Refresh your Twelve Data prices from Wallet setup before switching to USD.');
+      Alert.alert('USD rate unavailable', 'Open Investments and refresh market prices before switching to USD.');
       return;
     }
     setCurrency(next);
@@ -27,7 +27,7 @@ export default function WalletScreen() {
 
   return (
     <AppScreen assistant>
-      <PageHeader title="Wallet" supporting="Your cash, investments, plans, and spending in one place." action={<Pressable accessibilityLabel="Open wallet setup" onPress={() => router.push('/life')} style={styles.iconButton}><Feather name="settings" size={20} color={colors.ink} /></Pressable>} />
+      <PageHeader title="Wallet" supporting="Your cash, investments, plans, and spending in one place." />
       <View accessibilityRole="tablist" style={styles.currencyToggle}>
         {(['PHP', 'USD'] as const).map((value) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: currency === value }} key={value} onPress={() => chooseCurrency(value)} style={[styles.currencyOption, currency === value && styles.currencyActive]}><Text style={[styles.currencyText, currency === value && styles.currencyTextActive]}>{value}</Text></Pressable>)}
       </View>
@@ -45,6 +45,16 @@ export default function WalletScreen() {
       </View>
 
       <View style={styles.section}>
+        <SectionHeading title="Quick actions" detail="Add a value directly where it belongs" />
+        <View style={styles.quickGrid}>
+          <QuickAction icon="arrow-down-left" title="Add income" detail="Salary or starting cash" onPress={() => router.push({ pathname: '/wallet/activity', params: { action: 'add', type: 'income' } } as Href)} />
+          <QuickAction icon="arrow-up-right" title="Add expense" detail="Purchase or bill" onPress={() => router.push({ pathname: '/wallet/activity', params: { action: 'add', type: 'expense' } } as Href)} />
+          <QuickAction icon="trending-up" title="Add investment" detail="BTC or VOO purchase" onPress={() => router.push({ pathname: '/wallet/investments', params: { action: 'add' } } as Href)} />
+          <QuickAction icon="repeat" title="Plan month" detail="Salary, bills, budgets" onPress={() => router.push('/wallet/planning' as Href)} />
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <SectionHeading title="Explore wallet" />
         <View style={styles.list}>
           <DestinationRow icon="list" title="Activity" detail={`${data.transactions.length} money ${data.transactions.length === 1 ? 'record' : 'records'}`} onPress={() => router.push('/wallet/activity' as Href)} />
@@ -57,7 +67,7 @@ export default function WalletScreen() {
         <SectionHeading title="Recent activity" action={<Pressable accessibilityRole="button" onPress={() => router.push('/wallet/activity' as Href)} style={styles.textButton}><Text style={styles.textButtonLabel}>See all</Text></Pressable>} />
         <View style={styles.list}>
           {data.transactions.slice(0, 4).map((item) => <View key={item.id} style={styles.transaction}><View style={styles.transactionIcon}><Feather name={item.type === 'income' ? 'arrow-down-left' : item.type === 'investment' ? 'trending-up' : 'arrow-up-right'} size={17} color={colors.ink} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowDetail}>{item.category} · {new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' }).format(new Date(item.occurredAt))}</Text></View><Text style={[styles.transactionValue, item.type === 'income' && styles.positive]}>{item.type === 'income' ? '+' : '−'}{money(item.amountMinor)}</Text></View>)}
-          {!data.transactions.length ? <View style={styles.empty}><Text style={styles.emptyTitle}>No wallet activity yet</Text><Text style={styles.emptyText}>Add records from Wallet setup or confirm them from a voice capture.</Text></View> : null}
+          {!data.transactions.length ? <View style={styles.empty}><Text style={styles.emptyTitle}>Start with the money you have now</Text><Text style={styles.emptyText}>Tap Add income and label it “Starting balance”, then add any BTC or VOO you already own.</Text></View> : null}
         </View>
       </View>
     </AppScreen>
@@ -66,9 +76,9 @@ export default function WalletScreen() {
 
 function Metric({ label, value }: { label: string; value: string }) { return <View style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text adjustsFontSizeToFit numberOfLines={1} style={styles.metricValue}>{value}</Text></View>; }
 function DestinationRow({ icon, title, detail, onPress }: { icon: keyof typeof Feather.glyphMap; title: string; detail: string; onPress: () => void }) { return <Pressable accessibilityRole="button" onPress={onPress} style={styles.destination}><View style={styles.destinationIcon}><Feather name={icon} size={19} color={colors.ink} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowDetail}>{detail}</Text></View><Feather name="chevron-right" size={19} color={colors.muted} /></Pressable>; }
+function QuickAction({ icon, title, detail, onPress }: { icon: keyof typeof Feather.glyphMap; title: string; detail: string; onPress: () => void }) { return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}><View style={styles.quickIcon}><Feather name={icon} size={18} color={colors.ink} /></View><Text style={styles.quickTitle}>{title}</Text><Text style={styles.quickDetail}>{detail}</Text></Pressable>; }
 
 const styles = StyleSheet.create({
-  iconButton: { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper, alignItems: 'center', justifyContent: 'center' },
   currencyToggle: { alignSelf: 'flex-start', marginTop: 20, padding: 3, flexDirection: 'row', borderRadius: 10, backgroundColor: colors.border },
   currencyOption: { minWidth: 54, minHeight: 34, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
   currencyActive: { backgroundColor: colors.paper },
@@ -83,6 +93,11 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.secondary },
   metricValue: { marginTop: 5, fontFamily: fonts.bodySemiBold, fontSize: 14, lineHeight: 19, fontVariant: ['tabular-nums'], color: colors.ink },
   section: { marginTop: 34 },
+  quickGrid: { marginTop: 13, flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  quickAction: { width: '48%', minHeight: 112, flexGrow: 1, padding: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  quickIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  quickTitle: { marginTop: 11, fontFamily: fonts.bodySemiBold, fontSize: 13, lineHeight: 18, color: colors.ink },
+  quickDetail: { marginTop: 2, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
   list: { marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   destination: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border },
   destinationIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border },
@@ -98,4 +113,5 @@ const styles = StyleSheet.create({
   empty: { paddingVertical: 30 },
   emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   emptyText: { marginTop: 5, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.secondary },
+  pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
 });

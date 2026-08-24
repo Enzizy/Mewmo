@@ -44,7 +44,7 @@ export default function ResultsScreen() {
           );
         })}
       </View>
-      <Pressable onPress={() => router.replace('/timeline')} style={styles.timelineButton}><Text style={styles.timelineText}>View all in timeline</Text><Feather name="arrow-right" size={18} color={colors.surface} /></Pressable>
+      <Pressable onPress={() => router.replace('/tasks/timeline')} style={styles.timelineButton}><Text style={styles.timelineText}>View all in timeline</Text><Feather name="arrow-right" size={18} color={colors.surface} /></Pressable>
     </AppScreen>
   );
 }

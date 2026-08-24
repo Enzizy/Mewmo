@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import http from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { buildOrganizerPrompt, normalizeAudioMimeType, responseSchema, validateOrganizedDump } from './organizer.mjs';
 import { loadTwelveDataQuotes } from './market.mjs';
@@ -15,14 +16,15 @@ const requestsByAddress = new Map();
 let marketCache;
 const exchangeRateCache = new Map();
 
-const server = http.createServer(async (request, response) => {
+export async function handleRequest(request, response) {
   setCorsHeaders(response);
   const requestUrl = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'OPTIONS') return sendJson(response, 204, null);
-  if (request.method === 'GET' && request.url === '/health') {
+  if (request.method === 'GET' && requestUrl.pathname === '/health') {
     return sendJson(response, 200, { ok: true, configured: Boolean(process.env.GEMINI_API_KEY), marketConfigured: Boolean(process.env.TWELVE_DATA_API_KEY), model });
   }
-  if (request.method === 'GET' && request.url === '/market-quotes') {
+  if (!isAuthorized(request)) return sendJson(response, 401, { error: 'Unauthorized.' });
+  if (request.method === 'GET' && requestUrl.pathname === '/market-quotes') {
     if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
     try {
       if (marketCache && Date.now() - marketCache.cachedAt < 15 * 60 * 1000) return sendJson(response, 200, marketCache.value);
@@ -67,7 +69,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 502, { error: 'Gemini could not translate this text. Try again.' });
     }
   }
-  if (request.method === 'POST' && request.url === '/chat') {
+  if (request.method === 'POST' && requestUrl.pathname === '/chat') {
     if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
     if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
     try {
@@ -81,7 +83,7 @@ const server = http.createServer(async (request, response) => {
       return sendJson(response, 500, { error: error instanceof Error ? error.message : 'The assistant could not answer.' });
     }
   }
-  if (request.method !== 'POST' || request.url !== '/organize') return sendJson(response, 404, { error: 'Not found.' });
+  if (request.method !== 'POST' || requestUrl.pathname !== '/organize') return sendJson(response, 404, { error: 'Not found.' });
   if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
   if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
 
@@ -119,12 +121,14 @@ const server = http.createServer(async (request, response) => {
     console.error(`[organize] ${message}`);
     return sendJson(response, message.includes('too large') ? 413 : 500, { error: message });
   }
-});
+}
 
-server.listen(port, '0.0.0.0', () => {
-  console.log(`Mewmo AI server listening on http://0.0.0.0:${port}`);
-  console.log(process.env.GEMINI_API_KEY ? `Gemini model: ${model}` : 'GEMINI_API_KEY is not configured yet.');
-});
+if (!process.env.VERCEL) {
+  http.createServer(handleRequest).listen(port, '0.0.0.0', () => {
+    console.log(`Mewmo AI server listening on http://0.0.0.0:${port}`);
+    console.log(process.env.GEMINI_API_KEY ? `Gemini model: ${model}` : 'GEMINI_API_KEY is not configured yet.');
+  });
+}
 
 function validateRequest(body) {
   if (!body || typeof body !== 'object') throw new Error('Request body is required.');
@@ -166,8 +170,18 @@ function allowRequest(address) {
 
 function setCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+}
+
+function isAuthorized(request) {
+  const expected = process.env.MEWMO_CLIENT_TOKEN;
+  if (!expected) return true;
+  const authorization = request.headers.authorization || '';
+  const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+  const expectedBytes = Buffer.from(expected);
+  const suppliedBytes = Buffer.from(supplied);
+  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
 }
 
 function sendJson(response, status, body) {

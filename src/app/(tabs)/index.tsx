@@ -3,33 +3,24 @@ import { Href, useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
+import { InvestmentMark } from '@/components/InvestmentMark';
 import { PixelCat } from '@/components/PixelCat';
 import { PageHeader } from '@/components/page-header';
 import { SectionHeading } from '@/components/section-heading';
 import { colors, fonts, radius } from '@/constants/theme';
+import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { useItems } from '@/store/ItemsContext';
 import { ThoughtItem } from '@/types';
-import { estimatedValueMinor, formatPeso, sumDecimalQuantities } from '@/utils/money';
+import { formatPeso } from '@/utils/money';
 import { nextScheduledDate } from '@/utils/recurrence';
 
 export default function HomeScreen() {
   const router = useRouter();
   const { hydrated, items, projects, transactions, investments, quotes, recurringRules } = useItems();
-  const balance = transactions.reduce((sum, item) => sum + (item.type === 'income' ? item.amountMinor : item.type === 'expense' || item.type === 'investment' ? -item.amountMinor : 0), 0);
-  const portfolio = useMemo(() => {
-    let estimated = 0;
-    let valuedAssets = 0;
-    for (const asset of ['BTC', 'VOO'] as const) {
-      const lots = investments.filter((item) => item.asset === asset);
-      const quantity = sumDecimalQuantities(lots.map((item) => item.quantity)) ?? '0';
-      const quote = quotes.find((item) => item.asset === asset);
-      if (!quote || quantity === '0') continue;
-      const value = estimatedValueMinor(quantity, quote.priceMinor);
-      if (value != null) { estimated += value; valuedAssets += 1; }
-    }
-    const recorded = investments.reduce((sum, item) => sum + item.amountMinor + item.feesMinor, 0);
-    return { amount: valuedAssets ? estimated : recorded, live: valuedAssets > 0 };
-  }, [investments, quotes]);
+  const money = useMemo(() => getWalletSummary({ transactions, investments, quotes }), [investments, quotes, transactions]);
+  const heldPositions = useMemo(() => {
+    return money.positions.filter((position) => position.quantity !== '0' || position.recorded > 0);
+  }, [money.positions]);
 
   const attention = useMemo(() => {
     const tomorrow = new Date();
@@ -59,12 +50,34 @@ export default function HomeScreen() {
       />
 
       {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : <>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/wallet' as Href)} style={({ pressed }) => [styles.moneySurface, pressed && styles.pressed]}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Open wallet and investment details" onPress={() => router.push('/wallet' as Href)} style={({ pressed }) => [styles.moneySurface, pressed && styles.pressed]}>
           <View style={styles.moneyHeader}><Text style={styles.moneyLabel}>Money overview</Text><Feather name="arrow-up-right" size={18} color={colors.secondary} /></View>
           <View style={styles.moneyMetrics}>
-            <MoneyMetric label="Available wallet" value={formatPeso(balance)} />
+            <MoneyMetric label="Available wallet" value={formatPeso(money.balance)} />
             <View style={styles.metricDivider} />
-            <MoneyMetric label={portfolio.live ? 'Portfolio value' : 'Recorded investments'} value={formatPeso(portfolio.amount)} />
+            <MoneyMetric label={money.hasLivePortfolio ? 'Portfolio value' : 'Recorded investments'} value={formatPeso(money.portfolio)} />
+          </View>
+          <View style={styles.positions}>
+            {heldPositions.map((position) => (
+              <View key={position.asset} style={styles.positionRow}>
+                <InvestmentMark asset={position.asset} size={34} />
+                <View style={styles.positionMain}>
+                  <Text style={styles.assetName}>{position.asset}</Text>
+                  <Text numberOfLines={1} style={styles.assetQuantity}>{position.quantity} {position.asset === 'VOO' ? 'shares' : 'BTC'}</Text>
+                </View>
+                <View style={styles.positionValueGroup}>
+                  <Text numberOfLines={1} adjustsFontSizeToFit style={styles.positionValue}>{formatPeso(position.estimated ?? position.recorded)}</Text>
+                  <Text style={styles.positionValueLabel}>{position.estimated != null ? 'Current value' : 'Recorded'}</Text>
+                </View>
+              </View>
+            ))}
+            {!heldPositions.length ? (
+              <View style={styles.investmentEmpty}>
+                <View style={styles.emptyInvestmentIcon}><Feather name="trending-up" size={16} color={colors.secondary} /></View>
+                <View style={styles.positionMain}><Text style={styles.emptyInvestmentTitle}>No investments recorded</Text><Text style={styles.emptyInvestmentCopy}>Add BTC or VOO holdings in Wallet.</Text></View>
+                <Feather name="chevron-right" size={17} color={colors.muted} />
+              </View>
+            ) : null}
           </View>
         </Pressable>
 
@@ -114,6 +127,18 @@ const styles = StyleSheet.create({
   metricDivider: { width: 1, marginHorizontal: 16, backgroundColor: colors.border },
   metricLabel: { fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
   metricValue: { marginTop: 6, fontFamily: fonts.bodySemiBold, fontSize: 20, lineHeight: 26, letterSpacing: -0.5, fontVariant: ['tabular-nums'], color: colors.ink },
+  positions: { marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border },
+  positionRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: colors.border },
+  positionMain: { flex: 1, minWidth: 0 },
+  assetName: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
+  assetQuantity: { marginTop: 2, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
+  positionValueGroup: { maxWidth: '44%', alignItems: 'flex-end' },
+  positionValue: { fontFamily: fonts.bodySemiBold, fontSize: 14, fontVariant: ['tabular-nums'], color: colors.ink },
+  positionValueLabel: { marginTop: 2, fontFamily: fonts.body, fontSize: 10, color: colors.secondary },
+  investmentEmpty: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  emptyInvestmentIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  emptyInvestmentTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
+  emptyInvestmentCopy: { marginTop: 2, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
   section: { marginTop: 34 },
   textAction: { minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
   textActionLabel: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.accent },

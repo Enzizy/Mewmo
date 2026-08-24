@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { OrganizedItemInput, SuggestionKind } from '@/types';
+import { confirmAction } from '@/utils/confirm-action';
 import { formatPeso, parsePesoToMinor } from '@/utils/money';
 
 const kinds: SuggestionKind[] = ['task', 'reminder', 'project', 'expense', 'income', 'investment', 'idea', 'note'];
@@ -35,15 +36,12 @@ export default function ReviewScreen() {
     const current = items[index];
     update(index, { category: kinds[(kinds.indexOf(current.category) + 1) % kinds.length] });
   };
-  const discard = () => Alert.alert('Discard this recording?', 'The original audio and all suggestions will be removed.', [
-    { text: 'Keep reviewing', style: 'cancel' },
-    { text: 'Discard', style: 'destructive', onPress: async () => {
+  const discard = () => confirmAction({ title: 'Discard this recording?', message: 'The original audio and all suggestions will be removed.', confirmLabel: 'Discard', cancelLabel: 'Keep reviewing', onConfirm: async () => {
       await FileSystem.deleteAsync(pendingRecording.uri, { idempotent: true }).catch(() => undefined);
       setPendingRecording(null);
       setPendingOrganizedDump(null);
       router.replace('/');
-    } },
-  ]);
+    } });
   const confirm = async () => {
     if (invalidCount) return setError('Complete the highlighted money or investment details before confirming.');
     setSaving(true);

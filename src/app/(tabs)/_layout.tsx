@@ -25,6 +25,15 @@ function CaptureButton() {
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
+
+  const rootTab = (href: '/' | '/wallet' | '/tasks' | '/tools') => ({
+    tabPress: (event: { preventDefault: () => void }) => {
+      event.preventDefault();
+      router.replace(href);
+    },
+  });
+
   return (
     <Tabs
       backBehavior="history"
@@ -38,11 +47,11 @@ export default function TabsLayout() {
         tabBarStyle: styles.bar,
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} /> }} />
-      <Tabs.Screen name="wallet" options={{ title: 'Wallet', tabBarIcon: ({ focused }) => <TabIcon name="credit-card" focused={focused} /> }} />
+      <Tabs.Screen name="index" listeners={rootTab('/')} options={{ title: 'Home', tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} /> }} />
+      <Tabs.Screen name="wallet" listeners={rootTab('/wallet')} options={{ title: 'Wallet', tabBarIcon: ({ focused }) => <TabIcon name="credit-card" focused={focused} /> }} />
       <Tabs.Screen name="capture" options={{ title: 'Capture', tabBarButton: () => <CaptureButton /> }} />
-      <Tabs.Screen name="tasks" options={{ title: 'Tasks', tabBarIcon: ({ focused }) => <TabIcon name="check-square" focused={focused} /> }} />
-      <Tabs.Screen name="tools" options={{ title: 'Tools', tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} /> }} />
+      <Tabs.Screen name="tasks" listeners={rootTab('/tasks')} options={{ title: 'Tasks', tabBarIcon: ({ focused }) => <TabIcon name="check-square" focused={focused} /> }} />
+      <Tabs.Screen name="tools" listeners={rootTab('/tools')} options={{ title: 'Tools', tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} /> }} />
     </Tabs>
   );
 }

@@ -1,8 +1,10 @@
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
 import { AppScreen } from '@/components/AppScreen';
+import { PageHeader } from '@/components/page-header';
+import { ScreenHeader } from '@/components/ScreenHeader';
 import { TimelineItem } from '@/components/TimelineItem';
 import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
@@ -20,43 +22,30 @@ export default function TimelineScreen() {
       ...dumps.map((dump): TimelineEntry => ({ type: 'dump', date: new Date(dump.createdAt), dump })),
     ].filter((entry) => !Number.isNaN(entry.date.getTime())).sort((a, b) => b.date.getTime() - a.date.getTime());
     const grouped = new Map<string, TimelineEntry[]>();
-    entries.forEach((entry) => {
-      const key = `${entry.date.getFullYear()}-${entry.date.getMonth()}-${entry.date.getDate()}`;
-      grouped.set(key, [...(grouped.get(key) ?? []), entry]);
-    });
+    entries.forEach((entry) => { const key = `${entry.date.getFullYear()}-${entry.date.getMonth()}-${entry.date.getDate()}`; grouped.set(key, [...(grouped.get(key) ?? []), entry]); });
     return [...grouped.values()];
   }, [dumps, items]);
 
   const firstDate = groups[0]?.[0].date ?? new Date();
-  const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(firstDate).toUpperCase();
+  const monthLabel = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(firstDate);
 
   return (
-    <AppScreen bottomNav background={colors.paper}>
-      <Text style={styles.title}>Timeline</Text>
-      <Text style={styles.month}>{monthLabel}</Text>
+    <AppScreen assistant background={colors.paper}>
+      <ScreenHeader back />
+      <PageHeader title="Timeline" supporting="A chronological view of your captured records and voice notes." />
+      <Text style={styles.month}>{monthLabel.toUpperCase()}</Text>
       <View style={styles.calendarRule} />
-      {groups.length ? groups.map((entries) => {
-        const date = entries[0].date;
-        return <View key={date.toISOString()} style={styles.dayGroup}>
-          <View style={styles.day}><Text style={styles.dayNumber}>{date.getDate()}</Text><Text style={styles.weekday}>{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date).toUpperCase()}</Text></View>
-          <View style={styles.entries}>
-            {entries.map((entry, index) => entry.type === 'dump'
-              ? <Pressable accessibilityRole="button" onPress={() => router.push('/')} key={entry.dump.id} style={styles.dumpEntry}><View style={styles.dumpRail}><View style={styles.dumpDot} />{index < entries.length - 1 && <View style={styles.dumpLine} />}</View><Text style={styles.dumpTime}>{timeLabelFor(entry.date)}</Text><View style={styles.dumpMain}><Text style={styles.dumpTitle}>{entry.dump.title}</Text><Text style={styles.dumpLabel}>VOICE NOTE</Text></View></Pressable>
-              : <TimelineItem key={entry.item.id} item={entry.item} last={index === entries.length - 1} />)}
-          </View>
-        </View>;
-      }) : <Pressable accessibilityRole="button" onPress={() => router.push('/record')} style={styles.empty}><Feather name="clock" size={28} color={colors.muted} /><Text style={styles.emptyTitle}>Your timeline is ready</Text><Text style={styles.emptyText}>Record a thought to add the first moment.</Text></Pressable>}
+      {groups.length ? groups.map((entries) => { const date = entries[0].date; return <View key={date.toISOString()} style={styles.dayGroup}><View style={styles.day}><Text style={styles.dayNumber}>{date.getDate()}</Text><Text style={styles.weekday}>{new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(date).toUpperCase()}</Text></View><View style={styles.entries}>{entries.map((entry, index) => entry.type === 'dump' ? <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/dump/[id]', params: { id: entry.dump.id } })} key={entry.dump.id} style={styles.dumpEntry}><View style={styles.dumpRail}><View style={styles.dumpDot} />{index < entries.length - 1 ? <View style={styles.dumpLine} /> : null}</View><Text style={styles.dumpTime}>{timeLabelFor(entry.date)}</Text><View style={styles.dumpMain}><Text style={styles.dumpTitle}>{entry.dump.title}</Text><Text style={styles.dumpLabel}>VOICE NOTE</Text></View></Pressable> : <TimelineItem key={entry.item.id} item={entry.item} last={index === entries.length - 1} />)}</View></View>; }) : <Pressable accessibilityRole="button" onPress={() => router.push('/record')} style={styles.empty}><Feather name="clock" size={28} color={colors.muted} /><Text style={styles.emptyTitle}>Your timeline is ready</Text><Text style={styles.emptyText}>Record a thought to add the first moment.</Text></Pressable>}
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  title: { marginTop: 10, fontFamily: fonts.editorialSemiBold, fontSize: 38, color: colors.ink },
-  month: { marginTop: 24, fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 1.5, color: colors.terracotta },
+  month: { marginTop: 24, fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 1.5, color: colors.accent },
   calendarRule: { height: 1, marginTop: 12, marginBottom: 6, backgroundColor: colors.borderStrong },
   dayGroup: { flexDirection: 'row', paddingTop: 24 },
   day: { width: 58 },
-  dayNumber: { fontFamily: fonts.editorialSemiBold, fontSize: 31, lineHeight: 30, color: colors.ink },
+  dayNumber: { fontFamily: fonts.bodyBold, fontSize: 31, lineHeight: 30, color: colors.ink },
   weekday: { marginTop: 5, fontFamily: fonts.bodySemiBold, fontSize: 10, letterSpacing: 1.2, color: colors.muted },
   entries: { flex: 1 },
   dumpEntry: { minHeight: 78, flexDirection: 'row' },

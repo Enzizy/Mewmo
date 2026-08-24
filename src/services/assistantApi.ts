@@ -1,5 +1,5 @@
 import { AppDataSnapshot } from '@/types';
-import { getOrganizerApiUrl } from './organizerApi';
+import { getOrganizerApiHeaders, getOrganizerApiUrl } from './organizerApi';
 
 export type AssistantMessage = { role: 'user' | 'assistant'; text: string };
 
@@ -11,7 +11,7 @@ export async function askPersonalAssistant(message: string, history: AssistantMe
   try {
     const response = await fetch(`${apiUrl}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getOrganizerApiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ message, history: history.slice(-8), context: assistantContext(data) }),
       signal: controller.signal,
     });

@@ -1,5 +1,5 @@
 import { InvestmentAsset, MarketQuote } from '@/types';
-import { getOrganizerApiUrl } from './organizerApi';
+import { getOrganizerApiHeaders, getOrganizerApiUrl } from './organizerApi';
 
 const timeoutMs = 15_000;
 
@@ -9,7 +9,7 @@ export async function fetchMarketQuotes(): Promise<MarketQuote[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(`${apiUrl}/market-quotes`, { signal: controller.signal });
+    const response = await fetch(`${apiUrl}/market-quotes`, { signal: controller.signal, headers: getOrganizerApiHeaders() });
     const body = await response.json() as { quotes?: Partial<Record<InvestmentAsset, { priceMinor: number; usdPriceMinor: number; usdPhp: number; asOf: string; source: string }>>; error?: string };
     if (!response.ok) throw new Error(body.error || 'Market prices are unavailable.');
     return (['BTC', 'VOO'] as InvestmentAsset[]).map((asset) => {

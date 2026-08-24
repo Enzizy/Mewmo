@@ -8,6 +8,7 @@ import {
   removeThoughtItem,
   removeVoiceDump,
   removeMonthlyBudget,
+  removeFinancialTransactionRecord,
   removeRecurringRule,
   saveActivity,
   saveConfirmedBundle,
@@ -72,21 +73,36 @@ type ItemsContextValue = AppDataSnapshot & {
   addProject: (input: Pick<Project, 'name'> & Partial<Pick<Project, 'summary' | 'nextAction'>>) => Promise<Project>;
   addProjectHandoff: (projectId: string, note: string, nextAction?: string) => Promise<void>;
   addTransaction: (input: Pick<FinancialTransaction, 'type' | 'title' | 'category' | 'amountMinor'> & { occurredAt?: string }) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   addInvestment: (input: { asset: InvestmentAsset; quantity: string; amountMinor: number; feesMinor?: number; occurredAt?: string }) => Promise<void>;
   updateQuote: (asset: InvestmentAsset, priceMinor: number, source?: string) => Promise<void>;
   refreshMarketQuotes: () => Promise<void>;
   addRecurringRule: (input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => Promise<void>;
+  updateRecurringRule: (id: string, input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => Promise<void>;
   toggleRecurringRule: (id: string) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
-  saveBudget: (category: string, limitMinor: number) => Promise<void>;
+  saveBudget: (category: string, limitMinor: number, id?: string) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
   exportData: () => Promise<string>;
 };
 
 const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], budgets: [], activity: [] };
-const NOTIFICATIONS_KEY = 'brain-dump.notifications';
-const REWARDS_KEY = 'brain-dump.rewards';
+const NOTIFICATIONS_KEY = 'mewmo.notifications';
+const REWARDS_KEY = 'mewmo.rewards';
+const LEGACY_NOTIFICATIONS_KEY = 'brain-dump.notifications';
+const LEGACY_REWARDS_KEY = 'brain-dump.rewards';
 const ItemsContext = createContext<ItemsContextValue | null>(null);
+
+function readMigratedPreference(key: string, legacyKey: string) {
+  const current = localStorage.getItem(key);
+  if (current != null) return current !== 'false';
+  const legacy = localStorage.getItem(legacyKey);
+  if (legacy != null) {
+    localStorage.setItem(key, legacy);
+    localStorage.removeItem(legacyKey);
+  }
+  return legacy !== 'false';
+}
 
 export function ItemsProvider({ children }: PropsWithChildren) {
   const [data, setData] = useState<AppDataSnapshot>(EMPTY_DATA);
@@ -95,8 +111,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const [pendingOrganizedDump, setPendingOrganizedDump] = useState<OrganizedDump | null>(null);
   const [latestItemIds, setLatestItemIds] = useState<string[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
-  const [notificationEnabled, setNotificationEnabledState] = useState(() => localStorage.getItem(NOTIFICATIONS_KEY) !== 'false');
-  const [rewardsEnabled, setRewardsEnabledState] = useState(() => localStorage.getItem(REWARDS_KEY) !== 'false');
+  const [notificationEnabled, setNotificationEnabledState] = useState(() => readMigratedPreference(NOTIFICATIONS_KEY, LEGACY_NOTIFICATIONS_KEY));
+  const [rewardsEnabled, setRewardsEnabledState] = useState(() => readMigratedPreference(REWARDS_KEY, LEGACY_REWARDS_KEY));
 
   const refresh = useCallback(async () => setData(await loadAppData()), []);
 
@@ -236,6 +252,11 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     await refresh();
   }, [refresh]);
 
+  const deleteTransaction = useCallback(async (id: string) => {
+    await removeFinancialTransactionRecord(id);
+    await refresh();
+  }, [refresh]);
+
   const addInvestment = useCallback(async (input: { asset: InvestmentAsset; quantity: string; amountMinor: number; feesMinor?: number; occurredAt?: string }) => {
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid invested amount.');
     const occurredAt = input.occurredAt ?? new Date().toISOString();
@@ -274,6 +295,29 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     await refresh();
   }, [refresh]);
 
+  const updateRecurringRule = useCallback(async (id: string, input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => {
+    const existing = data.recurringRules.find((candidate) => candidate.id === id);
+    if (!existing) throw new Error('This automation no longer exists.');
+    const days = normalizeMonthlyDays(input.days);
+    if (!input.title.trim() || !input.category.trim()) throw new Error('Add a title and category.');
+    if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid recurring amount.');
+    if (!days.length || days.length !== input.days.length) throw new Error('Use unique calendar days from 1 to 31.');
+    if (input.kind === 'investment' && (!input.asset || unitPriceMinorFromTotal(input.quantity ?? '', input.amountMinor) == null)) throw new Error('Investments require an asset and an actual quantity with up to 8 decimal places.');
+    await saveRecurringRule({
+      ...existing,
+      kind: input.kind,
+      title: input.title.trim(),
+      category: input.category.trim(),
+      amountMinor: input.amountMinor,
+      days,
+      asset: input.kind === 'investment' ? input.asset : undefined,
+      quantity: input.kind === 'investment' ? input.quantity : undefined,
+      startsOn: input.startsOn ?? existing.startsOn,
+      updatedAt: new Date().toISOString(),
+    });
+    await refresh();
+  }, [data.recurringRules, refresh]);
+
   const toggleRecurringRule = useCallback(async (id: string) => {
     const rule = data.recurringRules.find((candidate) => candidate.id === id);
     if (!rule) return;
@@ -283,9 +327,13 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const deleteRecurringRule = useCallback(async (id: string) => { await removeRecurringRule(id); await refresh(); }, [refresh]);
 
-  const saveBudget = useCallback(async (category: string, limitMinor: number) => {
+  const saveBudget = useCallback(async (category: string, limitMinor: number, id?: string) => {
     if (!category.trim() || !Number.isSafeInteger(limitMinor) || limitMinor <= 0) throw new Error('Add a category and valid monthly limit.');
-    const existing = data.budgets.find((budget) => budget.category.toLocaleLowerCase() === category.trim().toLocaleLowerCase());
+    const normalizedCategory = category.trim().toLocaleLowerCase();
+    const duplicate = data.budgets.find((budget) => budget.id !== id && budget.category.toLocaleLowerCase() === normalizedCategory);
+    if (duplicate) throw new Error('A budget for this category already exists.');
+    const existing = data.budgets.find((budget) => budget.id === id)
+      ?? data.budgets.find((budget) => budget.category.toLocaleLowerCase() === normalizedCategory);
     const now = new Date().toISOString();
     const budget: MonthlyBudget = { id: existing?.id ?? createId('budget'), category: category.trim(), limitMinor, active: true, createdAt: existing?.createdAt ?? now, updatedAt: now };
     await saveMonthlyBudget(budget);
@@ -308,9 +356,9 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     scheduleTomorrow,
     addSubtask: (id, title) => updateItem(id, (item) => ({ ...item, subtasks: [...(item.subtasks ?? []), { id: createId('subtask'), title, completed: false }] })),
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
-    addProject, addProjectHandoff, addTransaction, addInvestment, updateQuote, refreshMarketQuotes,
-    addRecurringRule, toggleRecurringRule, deleteRecurringRule, saveBudget, deleteBudget, exportData: exportAppData,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addTransaction, confirmOrganizedDump, data, deleteBudget, deleteDump, deleteItem, deleteRecurringRule, hydrated, latestItemIds, level, notificationEnabled, pendingOrganizedDump, pendingRecording, processingError, refreshMarketQuotes, rewardsEnabled, saveBudget, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, toggleRecurringRule, totalXp, updateItem, updateQuote]);
+    addProject, addProjectHandoff, addTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
+    addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, saveBudget, deleteBudget, exportData: exportAppData,
+  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addTransaction, confirmOrganizedDump, data, deleteBudget, deleteDump, deleteItem, deleteRecurringRule, deleteTransaction, hydrated, latestItemIds, level, notificationEnabled, pendingOrganizedDump, pendingRecording, processingError, refreshMarketQuotes, rewardsEnabled, saveBudget, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, toggleRecurringRule, totalXp, updateItem, updateQuote, updateRecurringRule]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

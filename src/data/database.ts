@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import {
   ActivityEvent,
   AppDataSnapshot,
@@ -28,7 +29,10 @@ export function createId(prefix: string) {
 }
 
 export async function initializeDatabase() {
-  databasePromise ??= openAndMigrate();
+  databasePromise ??= openAndMigrate().catch((error) => {
+    databasePromise = undefined;
+    throw error;
+  });
   return databasePromise;
 }
 
@@ -196,7 +200,7 @@ async function migrateLegacyStorage(db: SQLite.SQLiteDatabase) {
   const legacyItems = safeArray<ThoughtItem>(entries.find(([key]) => key === LEGACY_ITEMS_KEY)?.[1]);
   const legacyDumps = safeArray<VoiceDump>(entries.find(([key]) => key === LEGACY_DUMPS_KEY)?.[1]);
 
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await withWriteTransaction(db, async (txn) => {
     for (const item of legacyItems) await insertThoughtItem(txn, item);
     for (const dump of legacyDumps) await insertVoiceDump(txn, dump);
     await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', LEGACY_IMPORT_KEY, 'complete');
@@ -252,7 +256,7 @@ export async function saveConfirmedBundle(bundle: {
   activity: ActivityEvent;
 }) {
   const db = await initializeDatabase();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await withWriteTransaction(db, async (txn) => {
     await insertVoiceDump(txn, bundle.dump);
     for (const item of bundle.items) await insertThoughtItem(txn, item);
     for (const project of bundle.projects) await insertProject(txn, project);
@@ -284,7 +288,7 @@ export async function saveProject(project: Project) {
 
 export async function saveProjectSession(session: ProjectSession, activity: ActivityEvent) {
   const db = await initializeDatabase();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await withWriteTransaction(db, async (txn) => {
     await txn.runAsync('INSERT OR REPLACE INTO project_sessions (id, project_id, note, next_action, created_at) VALUES (?, ?, ?, ?, ?)', session.id, session.projectId, session.note, session.nextAction ?? null, session.createdAt);
     await txn.runAsync('UPDATE projects SET current_focus = ?, next_action = ?, updated_at = ? WHERE id = ?', session.note, session.nextAction ?? null, session.createdAt, session.projectId);
     await insertActivity(txn, activity);
@@ -296,9 +300,23 @@ export async function saveFinancialTransaction(transaction: FinancialTransaction
   await insertFinancialTransaction(db, transaction);
 }
 
+export async function removeFinancialTransactionRecord(id: string) {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    const transaction = await txn.getFirstAsync<{ linked_investment_id: string | null }>(
+      'SELECT linked_investment_id FROM financial_transactions WHERE id = ?',
+      id,
+    );
+    const linkedInvestment = transaction?.linked_investment_id
+      ?? (await txn.getFirstAsync<{ id: string }>('SELECT id FROM investment_transactions WHERE cash_transaction_id = ?', id))?.id;
+    if (linkedInvestment) await txn.runAsync('DELETE FROM investment_transactions WHERE id = ?', linkedInvestment);
+    await txn.runAsync('DELETE FROM financial_transactions WHERE id = ?', id);
+  });
+}
+
 export async function saveInvestmentPurchase(investment: InvestmentTransaction, cash: FinancialTransaction) {
   const db = await initializeDatabase();
-  await db.withExclusiveTransactionAsync(async (txn) => {
+  await withWriteTransaction(db, async (txn) => {
     await insertFinancialTransaction(txn, cash);
     await insertInvestmentTransaction(txn, investment);
   });
@@ -329,7 +347,8 @@ export async function saveMonthlyBudget(budget: MonthlyBudget) {
   const db = await initializeDatabase();
   await db.runAsync(`INSERT INTO monthly_budgets (id, category, limit_minor, active, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(category) DO UPDATE SET limit_minor = excluded.limit_minor, active = excluded.active, updated_at = excluded.updated_at`,
+    ON CONFLICT(id) DO UPDATE SET category = excluded.category, limit_minor = excluded.limit_minor,
+      active = excluded.active, updated_at = excluded.updated_at`,
   budget.id, budget.category, budget.limitMinor, Number(budget.active), budget.createdAt, budget.updatedAt);
 }
 
@@ -381,6 +400,14 @@ async function insertActivity(executor: SqlExecutor, activity: ActivityEvent) {
 }
 
 type SqlExecutor = Pick<SQLite.SQLiteDatabase, 'runAsync'>;
+
+async function withWriteTransaction(db: SQLite.SQLiteDatabase, task: (txn: SQLite.SQLiteDatabase) => Promise<void>) {
+  if (Platform.OS === 'web') {
+    await db.withTransactionAsync(() => task(db));
+    return;
+  }
+  await db.withExclusiveTransactionAsync(task);
+}
 
 type ThoughtItemRow = { id: string; category: string; title: string; date_label: string; time_label: string | null; detail: string | null; due_at: string | null; created_at: string; source_dump_id: string | null; notification_id: string | null; completed: number | null; favorite: number; subtasks_json: string };
 type VoiceDumpRow = { id: string; title: string; created_at: string; duration_seconds: number; uri: string; transcript: string };
