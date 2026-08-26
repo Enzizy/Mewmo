@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { assistantSystemInstruction, buildAssistantContents, validateAssistantRequest } from './personal-assistant.mjs';
+import { assistantSystemInstruction, buildAssistantContents, validateAssistantRequest, validateAssistantResponse } from './personal-assistant.mjs';
 
 test('accepts a bounded personal question and recent conversation', () => {
   const input = validateAssistantRequest({ message: 'How much is my BTC worth?', context: { investments: [] }, history: [{ role: 'assistant', text: 'Hello' }] });
@@ -17,8 +17,16 @@ test('rejects missing and oversized assistant requests', () => {
 test('defines current Mewmo finance and action boundaries', () => {
   assert.match(assistantSystemInstruction, /safeToSpendMinor/);
   assert.match(assistantSystemInstruction, /subscriptions or bills/);
-  assert.match(assistantSystemInstruction, /chat is read-only/i);
+  assert.match(assistantSystemInstruction, /never changes records directly/i);
+  assert.match(assistantSystemInstruction, /Review inbox/);
   assert.match(assistantSystemInstruction, /PHP centavos/);
   assert.match(assistantSystemInstruction, /saved forecast/);
   assert.match(assistantSystemInstruction, /do not place brokerage orders/i);
+});
+
+test('keeps assistant actions as validated review proposals', () => {
+  const proposal = { title: 'Payday reminder', transcript: 'Remind me on payday', items: [{ category: 'reminder' }] };
+  const output = validateAssistantResponse({ answer: 'I prepared this for review.', proposal }, (value) => value);
+  assert.equal(output.proposal, proposal);
+  assert.throws(() => validateAssistantResponse({ answer: '', proposal: null }, (value) => value), /invalid assistant response/);
 });

@@ -33,7 +33,7 @@ export default function PlanningScreen() {
     if (params.action === 'budget') setEditor({ kind: 'budget' });
   }, [params.action]);
 
-  const removeRule = (rule: RecurringRule) => showDialog(confirmAction({ title: 'Delete automation?', message: `“${rule.title}” will stop posting. Existing wallet history stays unchanged.`, confirmLabel: 'Delete', onConfirm: () => deleteRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not delete automation', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' })) }));
+  const removeRule = (rule: RecurringRule) => showDialog(confirmAction({ title: 'Delete automation?', message: `“${rule.title}” will stop creating future review items. Confirmed wallet history stays unchanged.`, confirmLabel: 'Delete', onConfirm: () => deleteRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not delete automation', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' })) }));
   const removeBudget = (budget: MonthlyBudget) => showDialog(confirmAction({ title: 'Delete budget?', message: `This removes the ${budget.category} limit. It does not delete any expenses.`, confirmLabel: 'Delete', onConfirm: () => deleteBudget(budget.id).catch((error) => showDialog({ title: 'Could not delete budget', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' })) }));
   const retryPrices = async () => {
     if (refreshingPrices) return;
@@ -59,7 +59,7 @@ export default function PlanningScreen() {
       {marketRefreshError && automationRules.some((rule) => rule.kind === 'investment' && rule.active) ? <View accessibilityRole="alert" style={styles.priceError}><Feather name="alert-circle" size={16} color={colors.danger} /><View style={styles.priceErrorMain}><Text style={styles.priceErrorText}>Live prices could not update. Investment entries wait until a current quote is available.</Text><Text style={styles.priceErrorDetail}>{marketRefreshError}</Text></View><Pressable accessibilityRole="button" disabled={refreshingPrices} onPress={retryPrices} style={({ pressed }) => [styles.retryButton, refreshingPrices && styles.retryDisabled, pressed && !refreshingPrices && styles.pressed]}><Text style={styles.retryText}>{refreshingPrices ? 'Updating…' : 'Retry'}</Text></Pressable></View> : null}
 
       <View style={styles.section}>
-        <SectionHeading title="Automations" detail="Tracks each scheduled date once" />
+        <SectionHeading title="Automations" detail="Creates one editable review item per scheduled date" />
         <View style={styles.list}>
           {automationRules.map((rule) => (
             <View key={rule.id} style={styles.rule}>
@@ -77,8 +77,8 @@ export default function PlanningScreen() {
                 </View>
               </View>
               <View style={styles.automationToggle}>
-                <View><Text style={styles.toggleTitle}>Run automatically</Text><Text style={styles.toggleDetail}>{rule.active ? 'Future scheduled entries will be tracked' : 'No new entries will be tracked'}</Text></View>
-                <Host accessible accessibilityLabel={`Run ${rule.title} automatically`} accessibilityRole="switch" accessibilityState={{ checked: rule.active }} matchContents>
+                <View><Text style={styles.toggleTitle}>Create scheduled reviews</Text><Text style={styles.toggleDetail}>{rule.active ? 'Wallet changes only after you confirm' : 'No new review items will be created'}</Text></View>
+                <Host accessible accessibilityLabel={`Create scheduled reviews for ${rule.title}`} accessibilityRole="switch" accessibilityState={{ checked: rule.active }} matchContents>
                   <Switch value={rule.active} onValueChange={() => toggleRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not update automation', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' }))} />
                 </Host>
               </View>

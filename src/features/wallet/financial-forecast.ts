@@ -1,7 +1,7 @@
 import type { AppDataSnapshot, RecurringRule } from '../../types/index.ts';
 import { localDateKey, nextScheduledDate, scheduledDatesBetween } from '../../utils/recurrence.ts';
 
-type ForecastData = Pick<AppDataSnapshot, 'transactions' | 'recurringRules' | 'budgets' | 'investments' | 'quotes' | 'walletSetup'>;
+type ForecastData = Pick<AppDataSnapshot, 'transactions' | 'recurringRules' | 'financialOccurrences' | 'budgets' | 'investments' | 'quotes' | 'walletSetup' | 'savingsGoals'>;
 
 export type FinancialForecast = {
   today: string;
@@ -10,6 +10,7 @@ export type FinancialForecast = {
   upcomingBillsMinor: number;
   upcomingInvestmentsMinor: number;
   remainingBudgetMinor: number;
+  reservedGoalsMinor: number;
   projectedBalanceMinor: number;
   safeToSpendMinor: number;
   commitments: { id: string; title: string; kind: RecurringRule['kind']; date: string; amountMinor: number }[];
@@ -23,9 +24,13 @@ export function calculateFinancialForecast(data: ForecastData, balanceMinor: num
     .filter((entry): entry is { rule: RecurringRule; date: string } => Boolean(entry.date))
     .sort((a, b) => a.date.localeCompare(b.date))[0];
   const horizon = nextIncome?.date ?? endOfMonth(today);
-  const commitments = active
+  const futureCommitments = active
     .filter((rule) => rule.kind === 'expense' || rule.kind === 'investment')
-    .flatMap((rule) => scheduledDatesBetween(rule, today, horizon).map((date) => ({ id: `${rule.id}-${date}`, title: rule.title, kind: rule.kind, date, amountMinor: rule.amountMinor })))
+    .flatMap((rule) => scheduledDatesBetween(rule, today, horizon).map((date) => ({ id: `${rule.id}-${date}`, title: rule.title, kind: rule.kind, date, amountMinor: rule.amountMinor })));
+  const pendingCommitments = (data.financialOccurrences ?? [])
+    .filter((item) => item.status === 'pending' && (item.kind === 'expense' || item.kind === 'investment') && item.dueDate <= horizon)
+    .map((item) => ({ id: item.id, title: item.title, kind: item.kind, date: item.dueDate, amountMinor: item.plannedAmountMinor }));
+  const commitments = [...pendingCommitments, ...futureCommitments]
     .sort((a, b) => a.date.localeCompare(b.date));
   const upcomingBillsMinor = commitments.filter((item) => item.kind === 'expense').reduce((sum, item) => sum + item.amountMinor, 0);
   const upcomingInvestmentsMinor = commitments.filter((item) => item.kind === 'investment').reduce((sum, item) => sum + item.amountMinor, 0);
@@ -33,7 +38,8 @@ export function calculateFinancialForecast(data: ForecastData, balanceMinor: num
     const spent = data.transactions.filter((item) => item.type === 'expense' && isSameMonth(item.occurredAt, today) && item.category.toLocaleLowerCase() === budget.category.toLocaleLowerCase()).reduce((total, item) => total + item.amountMinor, 0);
     return sum + Math.max(0, budget.limitMinor - spent);
   }, 0);
-  const projectedBalanceMinor = balanceMinor - upcomingBillsMinor - upcomingInvestmentsMinor - remainingBudgetMinor;
+  const reservedGoalsMinor = (data.savingsGoals ?? []).filter((goal) => goal.active).reduce((sum, goal) => sum + goal.savedMinor, 0);
+  const projectedBalanceMinor = balanceMinor - upcomingBillsMinor - upcomingInvestmentsMinor - remainingBudgetMinor - reservedGoalsMinor;
   return {
     today,
     horizon,
@@ -41,6 +47,7 @@ export function calculateFinancialForecast(data: ForecastData, balanceMinor: num
     upcomingBillsMinor,
     upcomingInvestmentsMinor,
     remainingBudgetMinor,
+    reservedGoalsMinor,
     projectedBalanceMinor,
     safeToSpendMinor: Math.max(0, projectedBalanceMinor),
     commitments,

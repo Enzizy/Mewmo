@@ -3,8 +3,13 @@ import * as FileSystem from 'expo-file-system/legacy';
 import React, { createContext, PropsWithChildren, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   createId,
+  confirmFinancialOccurrence,
   exportAppData,
   loadAppData,
+  matchFinancialOccurrence,
+  postponeFinancialOccurrence,
+  removeReviewProposal,
+  removeSavingsGoal,
   removeThoughtItem,
   removeVoiceDump,
   removeMonthlyBudget,
@@ -16,9 +21,14 @@ import {
   saveInvestmentPurchase,
   saveMarketQuote,
   saveMonthlyBudget,
+  saveHomePreferences,
   saveProject,
   saveProjectSession,
   saveRecurringRule,
+  saveReviewProposal,
+  saveSavingsGoal,
+  resolveGoalContributionSuggestion,
+  skipFinancialOccurrence,
   saveWalletSetup,
   updateThoughtItem,
 } from '@/data/database';
@@ -29,6 +39,7 @@ import {
   AppDataSnapshot,
   Category,
   FinancialTransaction,
+  HomePreferences,
   InvestmentAsset,
   InvestmentTransaction,
   MarketQuote,
@@ -39,10 +50,13 @@ import {
   ProjectSession,
   RecurringRule,
   RecurringRuleKind,
+  ReviewProposal,
+  ReviewProposalSource,
   ReminderFrequency,
   ThoughtItem,
   VoiceDump,
   WalletSetup,
+  SavingsGoal,
 } from '@/types';
 import { dateLabelFor, timeLabelFor } from '@/utils/date';
 import { unitPriceMinorFromTotal } from '@/utils/money';
@@ -52,6 +66,8 @@ import { recurrenceForDate } from '@/utils/reminders';
 
 type ReminderInput = { title: string; detail?: string; dueAt: string; recurrence?: ReminderFrequency | null; enabled?: boolean };
 type RecurringRuleInput = { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; startsOn?: string };
+type SavingsGoalInput = { name: string; targetMinor: number; savedMinor: number; paydayContributionMinor: number; targetDate?: string; active?: boolean };
+type OccurrenceConfirmationInput = { amountMinor: number; actualDate: string; quantity?: string; feesMinor?: number; note?: string; updateFutureAmount?: boolean };
 
 type ItemsContextValue = AppDataSnapshot & {
   hydrated: boolean;
@@ -70,6 +86,9 @@ type ItemsContextValue = AppDataSnapshot & {
   setNotificationEnabled: (enabled: boolean) => void;
   setRewardsEnabled: (enabled: boolean) => void;
   confirmOrganizedDump: (organized: OrganizedDump) => Promise<void>;
+  queueReviewProposal: (source: ReviewProposalSource, organized: OrganizedDump, recording?: PendingRecording) => Promise<ReviewProposal>;
+  confirmReviewProposal: (id: string, organized: OrganizedDump) => Promise<void>;
+  discardReviewProposal: (id: string) => Promise<void>;
   toggleComplete: (id: string) => void;
   toggleFavorite: (id: string) => void;
   deleteItem: (id: string) => void;
@@ -93,13 +112,21 @@ type ItemsContextValue = AppDataSnapshot & {
   updateRecurringRule: (id: string, input: RecurringRuleInput) => Promise<void>;
   toggleRecurringRule: (id: string) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
+  confirmOccurrence: (id: string, input: OccurrenceConfirmationInput) => Promise<void>;
+  matchOccurrence: (id: string, transactionId: string) => Promise<void>;
+  skipOccurrence: (id: string, note?: string) => Promise<void>;
+  postponeOccurrence: (id: string, dueDate: string) => Promise<void>;
   saveBudget: (category: string, limitMinor: number, id?: string) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
+  saveGoal: (input: SavingsGoalInput, id?: string) => Promise<void>;
+  deleteGoal: (id: string) => Promise<void>;
+  resolveGoalSuggestion: (id: string, status: 'confirmed' | 'skipped') => Promise<void>;
+  updateHomePreferences: (preferences: HomePreferences) => Promise<void>;
   setWalletSetup: (setup: WalletSetup) => Promise<void>;
   exportData: () => Promise<string>;
 };
 
-const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], budgets: [], activity: [] };
+const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
 const NOTIFICATIONS_KEY = 'mewmo.notifications';
 const REWARDS_KEY = 'mewmo.rewards';
 const LEGACY_NOTIFICATIONS_KEY = 'brain-dump.notifications';
@@ -172,10 +199,10 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     localStorage.setItem(REWARDS_KEY, String(enabled));
   }, []);
 
-  const confirmOrganizedDump = useCallback(async (organized: OrganizedDump) => {
-    if (!pendingRecording) throw new Error('The original recording is no longer available.');
+  const persistOrganizedProposal = useCallback(async (organized: OrganizedDump, recording: PendingRecording | undefined, source: ReviewProposalSource, proposalId?: string) => {
     const createdAt = new Date().toISOString();
-    const dumpId = createId('dump');
+    const dumpId = proposalId ?? (recording ? createId('dump') : createId('proposal'));
+    const sourceId = recording ? dumpId : undefined;
     const items: ThoughtItem[] = [];
     const projects: Project[] = [];
     const transactions: FinancialTransaction[] = [];
@@ -191,7 +218,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
           detail: suggestion.detail ?? undefined,
           dueAt,
           createdAt,
-          sourceDumpId: dumpId,
+          sourceDumpId: sourceId,
           dateLabel: dateLabelFor(dueAt ?? createdAt),
           time: timeLabelFor(dueAt ?? createdAt),
           recurrence: dueAt && suggestion.recurrence ? recurrenceForDate(suggestion.recurrence, dueAt) : undefined,
@@ -202,29 +229,58 @@ export function ItemsProvider({ children }: PropsWithChildren) {
         item.notificationId = notificationEnabled ? await scheduleItemNotification(item) : undefined;
         items.push(item);
       } else if (suggestion.category === 'project') {
-        projects.push({ id: `${dumpId}-project-${index}`, name: suggestion.projectName || suggestion.title, summary: suggestion.detail ?? undefined, status: 'active', currentFocus: suggestion.detail ?? undefined, nextAction: suggestion.title, createdAt, updatedAt: createdAt, sourceDumpId: dumpId });
+        projects.push({ id: `${dumpId}-project-${index}`, name: suggestion.projectName || suggestion.title, summary: suggestion.detail ?? undefined, status: 'active', currentFocus: suggestion.detail ?? undefined, nextAction: suggestion.title, createdAt, updatedAt: createdAt, sourceDumpId: sourceId });
       } else if (suggestion.category === 'income' || suggestion.category === 'expense') {
         if ((suggestion.amountMinor ?? 0) <= 0) continue;
-        transactions.push({ id: `${dumpId}-money-${index}`, type: suggestion.category, title: suggestion.title, category: suggestion.category === 'income' ? 'Income' : 'General', amountMinor: suggestion.amountMinor!, occurredAt: dueAt ?? createdAt, sourceDumpId: dumpId });
+        transactions.push({ id: `${dumpId}-money-${index}`, type: suggestion.category, title: suggestion.title, category: suggestion.category === 'income' ? 'Income' : 'General', amountMinor: suggestion.amountMinor!, occurredAt: dueAt ?? createdAt, sourceDumpId: sourceId });
       } else if (suggestion.category === 'investment' && suggestion.asset && (suggestion.amountMinor ?? 0) > 0) {
         const unitPriceMinor = suggestion.unitPriceMinor ?? unitPriceMinorFromTotal(suggestion.quantity ?? '', suggestion.amountMinor!);
         if (unitPriceMinor == null) continue;
         const investmentId = `${dumpId}-investment-${index}`;
         const cashId = `${investmentId}-cash`;
-        investments.push({ id: investmentId, asset: suggestion.asset, quantity: suggestion.quantity!, unitPriceMinor, amountMinor: suggestion.amountMinor!, feesMinor: 0, occurredAt: dueAt ?? createdAt, sourceDumpId: dumpId, cashTransactionId: cashId });
-        transactions.push({ id: cashId, type: 'investment', title: `${suggestion.asset} contribution`, category: 'Investment', amountMinor: suggestion.amountMinor!, occurredAt: dueAt ?? createdAt, sourceDumpId: dumpId, linkedInvestmentId: investmentId });
+        investments.push({ id: investmentId, asset: suggestion.asset, quantity: suggestion.quantity!, unitPriceMinor, amountMinor: suggestion.amountMinor!, feesMinor: 0, occurredAt: dueAt ?? createdAt, sourceDumpId: sourceId, cashTransactionId: cashId });
+        transactions.push({ id: cashId, type: 'investment', title: `${suggestion.asset} contribution`, category: 'Investment', amountMinor: suggestion.amountMinor!, occurredAt: dueAt ?? createdAt, sourceDumpId: sourceId, linkedInvestmentId: investmentId });
       }
     }
 
-    const dump: VoiceDump = { id: dumpId, title: organized.title, createdAt, durationSeconds: pendingRecording.durationSeconds, uri: pendingRecording.uri, transcript: organized.transcript };
-    const activityEvent: ActivityEvent = { id: createId('activity'), kind: 'dump_confirmed', title: `Sorted “${organized.title}”`, xp: rewardsEnabled ? 10 : 0, createdAt, sourceId: dumpId };
-    await saveConfirmedBundle({ dump, items, projects, transactions, investments, activity: activityEvent });
+    const dump: VoiceDump | undefined = recording ? { id: dumpId, title: organized.title, createdAt, durationSeconds: recording.durationSeconds, uri: recording.uri, transcript: organized.transcript } : undefined;
+    const activityEvent: ActivityEvent = { id: createId('activity'), kind: recording ? 'dump_confirmed' : 'proposal_confirmed', title: `Sorted “${organized.title}”`, xp: rewardsEnabled ? 10 : 0, createdAt, sourceId: dumpId };
+    await saveConfirmedBundle({ dump, items, projects, transactions, investments, activity: activityEvent, reviewProposalId: proposalId });
     await refresh();
     setLatestItemIds(items.map((item) => item.id));
     setPendingRecording(null);
     setPendingOrganizedDump(null);
     setProcessingError(null);
-  }, [notificationEnabled, pendingRecording, refresh, rewardsEnabled]);
+  }, [notificationEnabled, refresh, rewardsEnabled]);
+
+  const confirmOrganizedDump = useCallback(async (organized: OrganizedDump) => {
+    if (!pendingRecording) throw new Error('The original recording is no longer available.');
+    await persistOrganizedProposal(organized, pendingRecording, 'voice');
+  }, [pendingRecording, persistOrganizedProposal]);
+
+  const queueReviewProposal = useCallback(async (source: ReviewProposalSource, organized: OrganizedDump, recording?: PendingRecording) => {
+    const proposal: ReviewProposal = { id: createId('review'), source, organized, recording, createdAt: new Date().toISOString() };
+    await saveReviewProposal(proposal);
+    await refresh();
+    return proposal;
+  }, [refresh]);
+
+  const confirmReviewProposal = useCallback(async (id: string, organized: OrganizedDump) => {
+    const proposal = data.reviewProposals.find((candidate) => candidate.id === id);
+    if (!proposal) throw new Error('This proposal is no longer in the review inbox.');
+    await persistOrganizedProposal(organized, proposal.recording, proposal.source, proposal.id);
+  }, [data.reviewProposals, persistOrganizedProposal]);
+
+  const discardReviewProposal = useCallback(async (id: string) => {
+    const proposal = data.reviewProposals.find((candidate) => candidate.id === id);
+    if (proposal?.recording?.uri) await FileSystem.deleteAsync(proposal.recording.uri, { idempotent: true }).catch(() => undefined);
+    await removeReviewProposal(id);
+    if (proposal?.recording?.uri === pendingRecording?.uri) {
+      setPendingRecording(null);
+      setPendingOrganizedDump(null);
+    }
+    await refresh();
+  }, [data.reviewProposals, pendingRecording?.uri, refresh]);
 
   const updateItem = useCallback((id: string, transform: (item: ThoughtItem) => ThoughtItem, reward?: boolean) => {
     setData((current) => {
@@ -417,6 +473,26 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const deleteRecurringRule = useCallback(async (id: string) => { await removeRecurringRule(id); await refresh(); }, [refresh]);
 
+  const confirmOccurrence = useCallback(async (id: string, input: OccurrenceConfirmationInput) => {
+    await confirmFinancialOccurrence(id, input);
+    await refresh();
+  }, [refresh]);
+
+  const matchOccurrence = useCallback(async (id: string, transactionId: string) => {
+    await matchFinancialOccurrence(id, transactionId);
+    await refresh();
+  }, [refresh]);
+
+  const skipOccurrence = useCallback(async (id: string, note?: string) => {
+    await skipFinancialOccurrence(id, note);
+    await refresh();
+  }, [refresh]);
+
+  const postponeOccurrence = useCallback(async (id: string, dueDate: string) => {
+    await postponeFinancialOccurrence(id, dueDate);
+    await refresh();
+  }, [refresh]);
+
   const saveBudget = useCallback(async (category: string, limitMinor: number, id?: string) => {
     if (!category.trim() || !Number.isSafeInteger(limitMinor) || limitMinor <= 0) throw new Error('Add a category and valid monthly limit.');
     const normalizedCategory = category.trim().toLocaleLowerCase();
@@ -432,6 +508,32 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const deleteBudget = useCallback(async (id: string) => { await removeMonthlyBudget(id); await refresh(); }, [refresh]);
 
+  const saveGoal = useCallback(async (input: SavingsGoalInput, id?: string) => {
+    const name = input.name.trim();
+    if (!name) throw new Error('Add a goal name.');
+    if (!Number.isSafeInteger(input.targetMinor) || input.targetMinor <= 0) throw new Error('Enter a valid target amount.');
+    if (!Number.isSafeInteger(input.savedMinor) || input.savedMinor < 0 || input.savedMinor > input.targetMinor) throw new Error('Reserved progress must be between zero and the target.');
+    if (!Number.isSafeInteger(input.paydayContributionMinor) || input.paydayContributionMinor < 0) throw new Error('Enter a valid payday suggestion amount.');
+    if (input.targetDate && (!/^\d{4}-\d{2}-\d{2}$/.test(input.targetDate) || localDateKey(new Date(localNoonIso(input.targetDate))) !== input.targetDate)) throw new Error('Use a valid target date.');
+    const existing = data.savingsGoals.find((goal) => goal.id === id);
+    const now = new Date().toISOString();
+    const goal: SavingsGoal = { id: existing?.id ?? createId('goal'), name, targetMinor: input.targetMinor, savedMinor: input.savedMinor, paydayContributionMinor: input.paydayContributionMinor, targetDate: input.targetDate, active: input.active ?? existing?.active ?? true, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    await saveSavingsGoal(goal);
+    await refresh();
+  }, [data.savingsGoals, refresh]);
+
+  const deleteGoal = useCallback(async (id: string) => { await removeSavingsGoal(id); await refresh(); }, [refresh]);
+
+  const resolveGoalSuggestion = useCallback(async (id: string, status: 'confirmed' | 'skipped') => {
+    await resolveGoalContributionSuggestion(id, status);
+    await refresh();
+  }, [refresh]);
+
+  const updateHomePreferences = useCallback(async (preferences: HomePreferences) => {
+    await saveHomePreferences(preferences);
+    await refresh();
+  }, [refresh]);
+
   const setWalletSetup = useCallback(async (setup: WalletSetup) => {
     if (!Number.isSafeInteger(setup.openingBalanceMinor) || setup.openingBalanceMinor < 0) throw new Error('Enter a valid starting wallet amount.');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(setup.startsOn) || localDateKey(new Date(localNoonIso(setup.startsOn))) !== setup.startsOn) throw new Error('Use a valid tracking date in YYYY-MM-DD format.');
@@ -444,7 +546,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<ItemsContextValue>(() => ({
     ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, marketRefreshError, notificationEnabled, rewardsEnabled, totalXp, level,
-    setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, setRewardsEnabled, confirmOrganizedDump,
+    setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, setRewardsEnabled, confirmOrganizedDump, queueReviewProposal, confirmReviewProposal, discardReviewProposal,
     toggleComplete: (id) => updateItem(id, (item) => ({ ...item, completed: !item.completed }), true),
     toggleFavorite: (id) => updateItem(id, (item) => ({ ...item, favorite: !item.favorite })),
     deleteItem, deleteDump,
@@ -454,8 +556,9 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     addSubtask: (id, title) => updateItem(id, (item) => ({ ...item, subtasks: [...(item.subtasks ?? []), { id: createId('subtask'), title, completed: false }] })),
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
     addProject, addProjectHandoff, addTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
-    addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, saveBudget, deleteBudget, setWalletSetup, exportData: exportAppData,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, data, deleteBudget, deleteDump, deleteItem, deleteRecurringRule, deleteTransaction, hydrated, latestItemIds, level, marketRefreshError, notificationEnabled, pendingOrganizedDump, pendingRecording, processingError, refreshMarketQuotes, rewardsEnabled, saveBudget, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, toggleRecurringRule, toggleReminderEnabled, totalXp, updateItem, updateQuote, updateRecurringRule, updateReminder]);
+    addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, confirmOccurrence, matchOccurrence, skipOccurrence, postponeOccurrence,
+    saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, setWalletSetup, exportData: exportAppData,
+  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateQuote, updateRecurringRule, updateReminder]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

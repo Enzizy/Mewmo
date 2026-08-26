@@ -4,7 +4,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
 import { buildOrganizerPrompt, normalizeAudioMimeType, responseSchema, validateOrganizedDump } from './organizer.mjs';
 import { loadTwelveDataQuotes } from './market.mjs';
-import { assistantSystemInstruction, buildAssistantContents, validateAssistantRequest } from './personal-assistant.mjs';
+import { assistantResponseSchema, assistantSystemInstruction, buildAssistantContents, validateAssistantRequest, validateAssistantResponse } from './personal-assistant.mjs';
 import { loadTwelveDataExchangeRate, validateCurrencyPair } from './exchange-rate.mjs';
 
 const port = Number(process.env.PORT || 8787);
@@ -58,10 +58,11 @@ export async function handleRequest(request, response) {
     try {
       const input = validateAssistantRequest(await readJson(request, 512 * 1024));
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const result = await ai.models.generateContent({ model, contents: buildAssistantContents(input), config: { systemInstruction: assistantSystemInstruction, temperature: 0.1, maxOutputTokens: 500 } });
-      const answer = result.text?.trim();
-      if (!answer) throw new Error('Gemini returned an empty answer.');
-      return sendJson(response, 200, { answer });
+      const result = await ai.models.generateContent({ model, contents: buildAssistantContents(input), config: { systemInstruction: assistantSystemInstruction, temperature: 0.1, maxOutputTokens: 800, responseMimeType: 'application/json', responseJsonSchema: assistantResponseSchema } });
+      const text = result.text?.trim();
+      if (!text) throw new Error('Gemini returned an empty answer.');
+      const output = validateAssistantResponse(JSON.parse(text), validateOrganizedDump);
+      return sendJson(response, 200, output);
     } catch (error) {
       return sendJson(response, 500, { error: error instanceof Error ? error.message : 'The assistant could not answer.' });
     }

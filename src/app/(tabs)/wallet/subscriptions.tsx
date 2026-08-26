@@ -24,7 +24,7 @@ export default function SubscriptionsScreen() {
 
   const remove = (rule: RecurringRule) => showDialog(confirmAction({
     title: 'Delete subscription or bill?',
-    message: `“${rule.title}” will stop future deductions. Existing wallet history stays unchanged.`,
+    message: `“${rule.title}” will stop creating future payment reviews. Existing wallet history stays unchanged.`,
     confirmLabel: 'Delete',
     onConfirm: () => deleteRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not delete item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' })),
   }));
@@ -32,7 +32,7 @@ export default function SubscriptionsScreen() {
   return (
     <AppScreen tabbed assistant={!editing}>
       <ScreenHeader back />
-      <PageHeader title="Subscriptions and bills" supporting="Keep every recurring expense and its automatic wallet deduction in one place." />
+      <PageHeader title="Subscriptions and bills" supporting="Schedule recurring expenses, then confirm the actual amount and payment date before your wallet changes." />
 
       <View style={styles.summary}>
         <View><Text style={styles.summaryLabel}>Estimated monthly total</Text><Text style={styles.summaryValue}>{formatPeso(monthlyTotal)}</Text></View>
@@ -46,7 +46,7 @@ export default function SubscriptionsScreen() {
       {editing ? <RecurringRuleForm mode="subscription" key={editing === 'new' ? 'new-subscription' : editing.id} initialRule={editing === 'new' ? undefined : editing} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} /> : null}
 
       <View style={styles.section}>
-        <SectionHeading title="Recurring expenses" detail="Each due date is deducted once" />
+        <SectionHeading title="Recurring expenses" detail="Each due date creates one review item" />
         <View style={styles.list}>
           {expenses.map((rule) => (
             <View key={rule.id} style={styles.rule}>
@@ -56,10 +56,10 @@ export default function SubscriptionsScreen() {
                 <Pressable accessibilityLabel={`Edit ${rule.title}`} accessibilityRole="button" onPress={() => setEditing(rule)} style={styles.rowAction}><Feather name="edit-3" size={16} color={colors.secondary} /></Pressable>
                 <Pressable accessibilityLabel={`Delete ${rule.title}`} accessibilityRole="button" onPress={() => remove(rule)} style={styles.rowAction}><Feather name="trash-2" size={16} color={colors.muted} /></Pressable>
               </View>
-              <View style={styles.toggleRow}><View style={styles.main}><Text style={styles.toggleTitle}>Automatic deduction</Text><Text style={styles.toggleDetail}>{rule.active ? 'Future due dates will post to Wallet' : 'No new deductions will post'}</Text></View><Host accessible accessibilityLabel={`Automatically deduct ${rule.title}`} accessibilityRole="switch" accessibilityState={{ checked: rule.active }} matchContents><Switch value={rule.active} onValueChange={() => toggleRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' }))} /></Host></View>
+              <View style={styles.toggleRow}><View style={styles.main}><Text style={styles.toggleTitle}>Create scheduled reviews</Text><Text style={styles.toggleDetail}>{rule.active ? 'Confirm the actual payment before Wallet changes' : 'No new review items will be created'}</Text></View><Host accessible accessibilityLabel={`Create scheduled reviews for ${rule.title}`} accessibilityRole="switch" accessibilityState={{ checked: rule.active }} matchContents><Switch value={rule.active} onValueChange={() => toggleRecurringRule(rule.id).catch((error) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' }))} /></Host></View>
             </View>
           ))}
-          {!expenses.length ? <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="credit-card" size={21} color={colors.muted} /></View><View style={styles.main}><Text style={styles.title}>No recurring expenses yet</Text><Text style={styles.emptyText}>Add a subscription or bill here. It will also be included in your forecast automatically.</Text></View></View> : null}
+          {!expenses.length ? <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="credit-card" size={21} color={colors.muted} /></View><View style={styles.main}><Text style={styles.title}>No recurring expenses yet</Text><Text style={styles.emptyText}>Add a subscription or bill here. It appears in your forecast and creates a review item when due.</Text></View></View> : null}
         </View>
       </View>
     </AppScreen>

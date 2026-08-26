@@ -21,7 +21,7 @@ export default function ForecastScreen() {
   return (
     <AppScreen tabbed assistant>
       <ScreenHeader back />
-      <PageHeader title="Forecast" supporting="See what is safely available after upcoming bills, investments, and the rest of this month’s budgets." />
+      <PageHeader title="Forecast" supporting="See what is safely available after pending and upcoming commitments, budgets, and savings goals." />
 
       <View style={[styles.hero, shortfall > 0 && styles.heroWarning]}>
         <View style={styles.heroTop}><Text style={styles.eyebrow}>SAFE TO SPEND</Text><Feather name={shortfall ? 'alert-triangle' : 'shield'} size={19} color={colors.paper} /></View>
@@ -34,6 +34,7 @@ export default function ForecastScreen() {
         <BreakdownRow label="Upcoming subscriptions and bills" value={-forecast.upcomingBillsMinor} />
         <BreakdownRow label="Planned investments" value={-forecast.upcomingInvestmentsMinor} />
         <BreakdownRow label="Unspent monthly budgets" value={-forecast.remainingBudgetMinor} />
+        <BreakdownRow label="Reserved for savings goals" value={-forecast.reservedGoalsMinor} />
       </View>
 
       <View style={styles.section}>
@@ -47,8 +48,9 @@ export default function ForecastScreen() {
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" onPress={() => router.push('/wallet/subscriptions' as Href)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Feather name="credit-card" size={18} color={colors.ink} /><Text style={styles.actionText}>Manage subscriptions and bills</Text><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable>
         <Pressable accessibilityRole="button" onPress={() => router.push('/wallet/planning' as Href)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Feather name="pie-chart" size={18} color={colors.ink} /><Text style={styles.actionText}>Manage budgets and automations</Text><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/wallet/goals' as Href)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Feather name="target" size={18} color={colors.ink} /><Text style={styles.actionText}>Manage savings goals</Text><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable>
       </View>
-      <Text style={styles.note}>This is an estimate based only on your recorded wallet, active schedules, and budgets. Unrecorded purchases are not included.</Text>
+      <Text style={styles.note}>This estimate uses your recorded wallet, pending reviews, active schedules, budgets, and goal reservations. Unrecorded purchases are not included.</Text>
     </AppScreen>
   );
 }

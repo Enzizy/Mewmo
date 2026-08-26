@@ -1,4 +1,4 @@
-import { AppDataSnapshot } from '@/types';
+import { AppDataSnapshot, OrganizedDump } from '@/types';
 import { calculateFinancialForecast } from '@/features/wallet/financial-forecast';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { getOrganizerApiHeaders, getOrganizerApiUrl } from './organizerApi';
@@ -18,9 +18,9 @@ export async function askPersonalAssistant(message: string, history: AssistantMe
       body: JSON.stringify({ message, history: history.slice(-8), context: await assistantContext(data) }),
       signal: controller.signal,
     });
-    const body = await response.json() as { answer?: string; error?: string };
+    const body = await response.json() as { answer?: string; proposal?: OrganizedDump | null; error?: string };
     if (!response.ok || !body.answer) throw new Error(body.error || 'The assistant could not answer.');
-    return body.answer;
+    return { answer: body.answer, proposal: body.proposal ?? null };
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('The assistant took too long to answer. Try again.');
     throw error;
@@ -44,9 +44,12 @@ async function assistantContext(data: AppDataSnapshot) {
     marketQuotes: data.quotes,
     recurringSchedules: data.recurringRules.map(({ quantity: _legacyQuantity, ...rule }) => ({
       ...rule,
-      investmentQuantityCalculation: rule.kind === 'investment' ? 'Fractional quantity is calculated from amountMinor and the latest available market quote when the due entry is processed.' : undefined,
+      investmentQuantityCalculation: rule.kind === 'investment' ? 'The PHP plan creates a pending review. A live quote may estimate quantity, but the user confirms the actual purchase date, amount, and exact broker quantity before holdings change.' : undefined,
     })),
     monthlyBudgets: data.budgets,
+    pendingFinancialReviews: data.financialOccurrences.filter((item) => item.status === 'pending').slice(0, 100),
+    savingsGoals: data.savingsGoals,
+    pendingGoalSuggestions: data.goalSuggestions.filter((item) => item.status === 'pending').slice(0, 100),
     wallet: {
       trackingStart: wallet.walletSetup,
       availableBalanceMinor: wallet.balance,
@@ -64,12 +67,13 @@ async function assistantContext(data: AppDataSnapshot) {
       upcomingBillsMinor: forecast.upcomingBillsMinor,
       upcomingInvestmentsMinor: forecast.upcomingInvestmentsMinor,
       remainingBudgetMinor: forecast.remainingBudgetMinor,
+      reservedGoalsMinor: forecast.reservedGoalsMinor,
       commitments: forecast.commitments.slice(0, 100),
     },
     appCapabilities: {
       calendar: 'Tasks and reminders can have dates, notifications, and daily, weekly, monthly, or yearly recurrence.',
-      finance: 'Wallet tracks cash, activity, BTC/VOO holdings, live or manual quotes, budgets, salary/investment automations, subscriptions and recurring bills, and safe-to-spend forecasts.',
-      capture: 'Voice Capture can propose tasks, reminders, notes, projects, income, expenses, and investments for user confirmation.',
+      finance: 'Wallet tracks cash, activity, BTC/VOO holdings, live or manual quotes, savings goals, budgets, salary/investment automations, subscriptions and recurring bills, pending financial reviews, and safe-to-spend forecasts.',
+      capture: 'Voice Capture and Ask My Cat can propose tasks, reminders, notes, projects, income, expenses, and investments. Proposals remain in Review until the user confirms or discards them.',
       tools: ['Weather forecast', 'Image conversion, compression, and resizing', 'PDF creation, merging, page extraction, and reordering', 'Currency conversion', 'Unit conversion', 'AR camera measurement'],
     },
     weather: weather.forecast,

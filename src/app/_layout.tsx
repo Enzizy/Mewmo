@@ -52,6 +52,7 @@ export default function RootLayout() {
               <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
               <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
               <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
+              <Stack.Screen name="home-customize" options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="results" options={{ animation: 'fade' }} />
               <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
             </Stack>

@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
@@ -19,10 +19,18 @@ const labels: Record<SuggestionKind, string> = { task: 'TASK', reminder: 'REMIND
 export default function ReviewScreen() {
   const { showDialog } = useAppDialog();
   const router = useRouter();
-  const { pendingOrganizedDump, pendingRecording, confirmOrganizedDump, setPendingOrganizedDump, setPendingRecording } = useItems();
-  const [items, setItems] = useState<OrganizedItemInput[]>(pendingOrganizedDump?.items ?? []);
+  const params = useLocalSearchParams<{ id?: string }>();
+  const { reviewProposals, pendingOrganizedDump, pendingRecording, confirmOrganizedDump, confirmReviewProposal, discardReviewProposal, setPendingOrganizedDump, setPendingRecording } = useItems();
+  const savedProposal = reviewProposals.find((proposal) => proposal.id === params.id);
+  const organizedDump = savedProposal?.organized ?? pendingOrganizedDump;
+  const recording = savedProposal?.recording ?? pendingRecording;
+  const [items, setItems] = useState<OrganizedItemInput[]>(organizedDump?.items ?? []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (organizedDump) setItems(organizedDump.items);
+  }, [organizedDump?.title, savedProposal?.id]);
 
   const invalidCount = useMemo(() => items.filter((item) => {
     if (!item.title.trim()) return true;
@@ -31,25 +39,29 @@ export default function ReviewScreen() {
     return false;
   }).length, [items]);
 
-  if (!pendingOrganizedDump || !pendingRecording) return <AppScreen><ScreenHeader back /><Text style={styles.empty}>There is no recording waiting for review.</Text></AppScreen>;
+  if (!organizedDump) return <AppScreen><ScreenHeader back /><Text style={styles.empty}>This proposal is no longer waiting for review.</Text></AppScreen>;
 
   const update = (index: number, next: Partial<OrganizedItemInput>) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...next } : item));
   const cycleKind = (index: number) => {
     const current = items[index];
     update(index, { category: kinds[(kinds.indexOf(current.category) + 1) % kinds.length] });
   };
-  const discard = () => showDialog(confirmAction({ title: 'Discard this recording?', message: 'The original audio and all suggestions will be removed.', confirmLabel: 'Discard', cancelLabel: 'Keep reviewing', onConfirm: async () => {
-      await FileSystem.deleteAsync(pendingRecording.uri, { idempotent: true }).catch(() => undefined);
-      setPendingRecording(null);
-      setPendingOrganizedDump(null);
-      router.replace('/');
+  const discard = () => showDialog(confirmAction({ title: `Discard this ${savedProposal?.source === 'chat' ? 'proposal' : 'recording'}?`, message: savedProposal?.source === 'chat' ? 'All suggested changes will be removed.' : 'The original audio and all suggestions will be removed.', confirmLabel: 'Discard', cancelLabel: 'Keep reviewing', onConfirm: async () => {
+      if (savedProposal) await discardReviewProposal(savedProposal.id);
+      else {
+        if (recording?.uri) await FileSystem.deleteAsync(recording.uri, { idempotent: true }).catch(() => undefined);
+        setPendingRecording(null);
+        setPendingOrganizedDump(null);
+      }
+      router.replace((savedProposal ? '/wallet/inbox' : '/') as Href);
     } }));
   const confirm = async () => {
     if (invalidCount) return setError('Complete the highlighted money or investment details before confirming.');
     setSaving(true);
     setError(null);
     try {
-      await confirmOrganizedDump({ ...pendingOrganizedDump, items });
+      if (savedProposal) await confirmReviewProposal(savedProposal.id, { ...organizedDump, items });
+      else await confirmOrganizedDump({ ...organizedDump, items });
       router.replace('/results');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'These suggestions could not be saved.');
@@ -61,7 +73,7 @@ export default function ReviewScreen() {
     <AppScreen background={colors.paper}>
       <ScreenHeader back onBack={discard} />
       <View style={styles.hero}><View style={styles.heroCopy}><Text style={styles.title}>CAT SORTED {items.length} THOUGHTS</Text><Text style={styles.support}>Check each destination before anything is saved.</Text></View><PixelCat pose="sorting" size={82} /></View>
-      <View style={styles.transcript}><Text style={styles.micro}>TRANSCRIPT</Text><Text selectable style={styles.transcriptText}>{pendingOrganizedDump.transcript}</Text></View>
+      <View style={styles.transcript}><Text style={styles.micro}>{savedProposal?.source === 'chat' ? 'REQUEST' : 'TRANSCRIPT'}</Text><Text selectable style={styles.transcriptText}>{organizedDump.transcript}</Text></View>
       <View style={styles.list}>
         {items.map((item, index) => {
           const invalid = !item.title.trim() || ((item.category === 'income' || item.category === 'expense' || item.category === 'investment') && (item.amountMinor ?? 0) <= 0) || (item.category === 'investment' && (!item.asset || !item.quantity || Number(item.quantity) <= 0));

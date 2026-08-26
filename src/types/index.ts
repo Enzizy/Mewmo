@@ -140,6 +140,74 @@ export type RecurringRule = {
   updatedAt: string;
 };
 
+export type FinancialOccurrenceStatus = 'pending' | 'confirmed' | 'skipped';
+
+export type FinancialOccurrence = {
+  id: string;
+  ruleId: string;
+  kind: RecurringRuleKind;
+  title: string;
+  category: string;
+  plannedAmountMinor: number;
+  scheduledDate: string;
+  dueDate: string;
+  asset?: InvestmentAsset;
+  status: FinancialOccurrenceStatus;
+  actualAmountMinor?: number;
+  actualDate?: string;
+  quantity?: string;
+  feesMinor?: number;
+  note?: string;
+  transactionId?: string;
+  investmentId?: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+};
+
+export type SavingsGoal = {
+  id: string;
+  name: string;
+  targetMinor: number;
+  savedMinor: number;
+  paydayContributionMinor: number;
+  targetDate?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type GoalContributionSuggestion = {
+  id: string;
+  goalId: string;
+  sourceTransactionId: string;
+  amountMinor: number;
+  status: 'pending' | 'confirmed' | 'skipped';
+  createdAt: string;
+  resolvedAt?: string;
+};
+
+export type ReviewProposalSource = 'voice' | 'chat';
+
+export type ReviewProposal = {
+  id: string;
+  source: ReviewProposalSource;
+  organized: OrganizedDump;
+  recording?: PendingRecording;
+  createdAt: string;
+};
+
+export type HomeWidgetId = 'review' | 'weather' | 'money' | 'goals' | 'schedule' | 'attention' | 'coming-up' | 'shortcuts';
+export type HomeShortcutId = 'add-income' | 'add-expense' | 'add-investment' | 'add-reminder' | 'currency' | 'image-tools' | 'pdf-tools' | 'weather';
+
+export type HomePreferences = {
+  order: HomeWidgetId[];
+  hidden: HomeWidgetId[];
+  compact: HomeWidgetId[];
+  balancesVisible: boolean;
+  shortcuts: HomeShortcutId[];
+};
+
 export type MonthlyBudget = {
   id: string;
   category: string;
@@ -154,7 +222,7 @@ export type WalletSetup = {
   startsOn: string;
 };
 
-export type ActivityKind = 'dump_confirmed' | 'item_completed' | 'project_handoff' | 'weekly_review';
+export type ActivityKind = 'dump_confirmed' | 'proposal_confirmed' | 'item_completed' | 'project_handoff' | 'weekly_review';
 
 export type ActivityEvent = {
   id: string;
@@ -174,7 +242,12 @@ export type AppDataSnapshot = {
   investments: InvestmentTransaction[];
   quotes: MarketQuote[];
   recurringRules: RecurringRule[];
+  financialOccurrences: FinancialOccurrence[];
   budgets: MonthlyBudget[];
+  savingsGoals: SavingsGoal[];
+  goalSuggestions: GoalContributionSuggestion[];
+  reviewProposals: ReviewProposal[];
+  homePreferences: HomePreferences;
   walletSetup?: WalletSetup;
   activity: ActivityEvent[];
 };

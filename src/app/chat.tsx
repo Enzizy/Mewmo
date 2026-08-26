@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
@@ -12,6 +13,7 @@ import { useItems } from '@/store/ItemsContext';
 const suggestions = ['What is on my schedule?', 'What is safe for me to spend?', 'What bills are coming up?', 'Which tool should I use?'];
 
 export default function ChatScreen() {
+  const router = useRouter();
   const { showDialog } = useAppDialog();
   const data = useItems();
   const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: 'Ask me about your schedule, projects, wallet, investments, subscriptions, forecast, or Mewmo tools.' }]);
@@ -27,8 +29,13 @@ export default function ChatScreen() {
     setInput('');
     setSending(true);
     try {
-      const answer = await askPersonalAssistant(text, previous, data);
-      setMessages((current) => [...current, { role: 'assistant', text: answer }]);
+      const result = await askPersonalAssistant(text, previous, data);
+      if (result.proposal) {
+        const proposal = await data.queueReviewProposal('chat', { ...result.proposal, transcript: text });
+        setMessages((current) => [...current, { role: 'assistant', text: `${result.answer}\n\nI added a proposal to Review. Nothing changes until you confirm it.` }, { role: 'assistant', text: `REVIEW:${proposal.id}` }]);
+      } else {
+        setMessages((current) => [...current, { role: 'assistant', text: result.answer }]);
+      }
     } catch (error) {
       showDialog({ title: 'Assistant unavailable', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
     } finally {
@@ -40,7 +47,7 @@ export default function ChatScreen() {
     <ScreenHeader back title="ASK MY CAT" />
     <View style={styles.intro}><PixelCat pose="curious" size={66} speech="ASK AWAY" /><Text style={styles.privacy}>Your question and a summary of confirmed app records are sent to Gemini. Voice recordings and transcripts are not included.</Text></View>
     <ScrollView ref={scrollRef} style={styles.messageList} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={styles.messages} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
-      {messages.map((message, index) => <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.catBubble]}><Text selectable style={[styles.message, message.role === 'user' && styles.userMessage]}>{message.text}</Text></View>)}
+      {messages.map((message, index) => message.text.startsWith('REVIEW:') ? <Pressable accessibilityRole="button" key={`${message.role}-${index}`} onPress={() => router.push({ pathname: '/review', params: { id: message.text.slice(7) } })} style={styles.reviewButton}><Feather name="inbox" size={17} color={colors.paper} /><Text style={styles.reviewButtonText}>Review proposed changes</Text><Feather name="chevron-right" size={17} color={colors.paper} /></Pressable> : <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.catBubble]}><Text selectable style={[styles.message, message.role === 'user' && styles.userMessage]}>{message.text}</Text></View>)}
       {sending ? <View style={[styles.bubble, styles.catBubble, styles.loading]}><ActivityIndicator size="small" color={colors.ink} /><Text style={styles.thinking}>CHECKING YOUR RECORDS...</Text></View> : null}
     </ScrollView>
     {!messages.some((message) => message.role === 'user') ? <View style={styles.suggestions}>{suggestions.map((suggestion) => <Pressable key={suggestion} onPress={() => send(suggestion)} style={styles.suggestion}><Text style={styles.suggestionText}>{suggestion}</Text></Pressable>)}</View> : null}
@@ -67,4 +74,6 @@ const styles = StyleSheet.create({
   input: { flex: 1, minHeight: 48, paddingHorizontal: 13, borderWidth: 1, borderColor: colors.borderStrong, fontFamily: fonts.body, fontSize: 14, color: colors.ink, backgroundColor: colors.surface },
   send: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
   disabled: { opacity: 0.35 },
+  reviewButton: { alignSelf: 'flex-start', minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.ink },
+  reviewButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper },
 });

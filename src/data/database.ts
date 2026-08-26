@@ -4,18 +4,24 @@ import { Platform } from 'react-native';
 import {
   ActivityEvent,
   AppDataSnapshot,
+  FinancialOccurrence,
   FinancialTransaction,
+  GoalContributionSuggestion,
+  HomePreferences,
   InvestmentTransaction,
   MarketQuote,
   MonthlyBudget,
   Project,
   ProjectSession,
   RecurringRule,
+  ReviewProposal,
+  SavingsGoal,
   ThoughtItem,
   VoiceDump,
   WalletSetup,
 } from '@/types';
-import { investmentPurchaseFromBudget } from '@/utils/market';
+import { DEFAULT_HOME_PREFERENCES, normalizeHomePreferences } from '@/features/home/home-preferences';
+import { unitPriceMinorFromTotal } from '@/utils/money';
 import { localDateKey, localNoonIso, scheduledDatesThrough } from '@/utils/recurrence';
 
 const DATABASE_NAME = 'brain-dump.db';
@@ -24,6 +30,7 @@ const LEGACY_DUMPS_KEY = '@gather/dumps-v2';
 const LEGACY_IMPORT_KEY = 'legacy_import_v2';
 const WALLET_OPENING_BALANCE_KEY = 'wallet_opening_balance_minor';
 const WALLET_TRACKING_START_KEY = 'wallet_tracking_starts_on';
+const HOME_PREFERENCES_KEY = 'home_preferences_v1';
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | undefined;
 
@@ -199,6 +206,68 @@ async function openAndMigrate() {
     `);
   }
 
+  if (version < 5) {
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS financial_occurrences (
+        id TEXT PRIMARY KEY NOT NULL,
+        rule_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('income', 'expense', 'investment')),
+        title TEXT NOT NULL,
+        category TEXT NOT NULL,
+        planned_amount_minor INTEGER NOT NULL CHECK(planned_amount_minor > 0),
+        scheduled_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        asset TEXT CHECK(asset IN ('BTC', 'VOO')),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'confirmed', 'skipped')),
+        actual_amount_minor INTEGER,
+        actual_date TEXT,
+        quantity TEXT,
+        fees_minor INTEGER,
+        note TEXT,
+        transaction_id TEXT,
+        investment_id TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        resolved_at TEXT,
+        UNIQUE(rule_id, scheduled_date)
+      );
+      CREATE INDEX IF NOT EXISTS financial_occurrences_status_due ON financial_occurrences(status, due_date);
+
+      CREATE TABLE IF NOT EXISTS savings_goals (
+        id TEXT PRIMARY KEY NOT NULL,
+        name TEXT NOT NULL,
+        target_minor INTEGER NOT NULL CHECK(target_minor > 0),
+        saved_minor INTEGER NOT NULL DEFAULT 0 CHECK(saved_minor >= 0),
+        payday_contribution_minor INTEGER NOT NULL DEFAULT 0 CHECK(payday_contribution_minor >= 0),
+        target_date TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS goal_contribution_suggestions (
+        id TEXT PRIMARY KEY NOT NULL,
+        goal_id TEXT NOT NULL REFERENCES savings_goals(id) ON DELETE CASCADE,
+        source_transaction_id TEXT NOT NULL,
+        amount_minor INTEGER NOT NULL CHECK(amount_minor > 0),
+        status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'confirmed', 'skipped')),
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        UNIQUE(goal_id, source_transaction_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS review_proposals (
+        id TEXT PRIMARY KEY NOT NULL,
+        source TEXT NOT NULL CHECK(source IN ('voice', 'chat')),
+        organized_json TEXT NOT NULL,
+        recording_json TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS review_proposals_created ON review_proposals(created_at DESC);
+      PRAGMA user_version = 5;
+    `);
+  }
+
   await migrateLegacyStorage(db);
   return db;
 }
@@ -230,8 +299,8 @@ function safeArray<T>(value?: string | null): T[] {
 
 export async function loadAppData(): Promise<AppDataSnapshot> {
   const db = await initializeDatabase();
-  await postDueRecurringRules(db);
-  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, budgets, activity, walletSettings] = await Promise.all([
+  await createDueRecurringOccurrences(db);
+  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, occurrences, budgets, savingsGoals, goalSuggestions, reviewProposals, activity, walletSettings] = await Promise.all([
     db.getAllAsync<ThoughtItemRow>('SELECT * FROM thought_items ORDER BY created_at DESC'),
     db.getAllAsync<VoiceDumpRow>('SELECT * FROM voice_dumps ORDER BY created_at DESC'),
     db.getAllAsync<ProjectRow>('SELECT * FROM projects ORDER BY updated_at DESC'),
@@ -240,13 +309,18 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     db.getAllAsync<InvestmentTransactionRow>('SELECT * FROM investment_transactions ORDER BY occurred_at DESC'),
     db.getAllAsync<MarketQuote>('SELECT asset, price_minor AS priceMinor, usd_price_minor AS usdPriceMinor, usd_php AS usdPhp, as_of AS asOf, source FROM market_quotes'),
     db.getAllAsync<RecurringRuleRow>('SELECT * FROM recurring_rules ORDER BY active DESC, updated_at DESC'),
+    db.getAllAsync<FinancialOccurrenceRow>('SELECT * FROM financial_occurrences ORDER BY status = \'pending\' DESC, due_date, created_at DESC'),
     db.getAllAsync<MonthlyBudgetRow>('SELECT * FROM monthly_budgets ORDER BY active DESC, category COLLATE NOCASE'),
+    db.getAllAsync<SavingsGoalRow>('SELECT * FROM savings_goals ORDER BY active DESC, updated_at DESC'),
+    db.getAllAsync<GoalSuggestionRow>('SELECT * FROM goal_contribution_suggestions ORDER BY status = \'pending\' DESC, created_at DESC'),
+    db.getAllAsync<ReviewProposalRow>('SELECT * FROM review_proposals ORDER BY created_at DESC'),
     db.getAllAsync<ActivityEventRow>('SELECT * FROM activity_events ORDER BY created_at DESC'),
-    db.getAllAsync<SettingRow>('SELECT key, value FROM settings WHERE key IN (?, ?)', WALLET_OPENING_BALANCE_KEY, WALLET_TRACKING_START_KEY),
+    db.getAllAsync<SettingRow>('SELECT key, value FROM settings WHERE key IN (?, ?, ?)', WALLET_OPENING_BALANCE_KEY, WALLET_TRACKING_START_KEY, HOME_PREFERENCES_KEY),
   ]);
 
   const openingBalanceValue = walletSettings.find((row) => row.key === WALLET_OPENING_BALANCE_KEY)?.value;
   const startsOn = walletSettings.find((row) => row.key === WALLET_TRACKING_START_KEY)?.value;
+  const homePreferencesValue = walletSettings.find((row) => row.key === HOME_PREFERENCES_KEY)?.value;
   const openingBalanceMinor = openingBalanceValue == null ? null : Number(openingBalanceValue);
   const walletSetup = startsOn && Number.isSafeInteger(openingBalanceMinor) && openingBalanceMinor! >= 0
     ? { openingBalanceMinor: openingBalanceMinor!, startsOn }
@@ -261,7 +335,16 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     investments: investments.map((row) => ({ id: row.id, asset: row.asset as InvestmentTransaction['asset'], quantity: row.quantity, unitPriceMinor: row.unit_price_minor, amountMinor: row.amount_minor, feesMinor: row.fees_minor, occurredAt: row.occurred_at, sourceDumpId: row.source_dump_id ?? undefined, cashTransactionId: row.cash_transaction_id ?? undefined })),
     quotes,
     recurringRules: recurringRules.map((row) => ({ id: row.id, kind: row.kind as RecurringRule['kind'], title: row.title, category: row.category, amountMinor: row.amount_minor, days: safeArray<number>(row.days_json), asset: (row.asset as RecurringRule['asset']) ?? undefined, quantity: row.quantity ?? undefined, active: Boolean(row.active), startsOn: row.starts_on, createdAt: row.created_at, updatedAt: row.updated_at })),
+    financialOccurrences: occurrences.map(fromFinancialOccurrenceRow),
     budgets: budgets.map((row) => ({ id: row.id, category: row.category, limitMinor: row.limit_minor, active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at })),
+    savingsGoals: savingsGoals.map((row) => ({ id: row.id, name: row.name, targetMinor: row.target_minor, savedMinor: row.saved_minor, paydayContributionMinor: row.payday_contribution_minor, targetDate: row.target_date ?? undefined, active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at })),
+    goalSuggestions: goalSuggestions.map((row) => ({ id: row.id, goalId: row.goal_id, sourceTransactionId: row.source_transaction_id, amountMinor: row.amount_minor, status: row.status as GoalContributionSuggestion['status'], createdAt: row.created_at, resolvedAt: row.resolved_at ?? undefined })),
+    reviewProposals: reviewProposals.flatMap((row) => {
+      const organized = safeObject<ReviewProposal['organized']>(row.organized_json);
+      if (!organized) return [];
+      return [{ id: row.id, source: row.source as ReviewProposal['source'], organized, recording: row.recording_json ? safeObject<NonNullable<ReviewProposal['recording']>>(row.recording_json) : undefined, createdAt: row.created_at }];
+    }),
+    homePreferences: normalizeHomePreferences(homePreferencesValue ? safeObject<Partial<HomePreferences>>(homePreferencesValue) : DEFAULT_HOME_PREFERENCES),
     walletSetup,
     activity: activity.map((row) => ({ id: row.id, kind: row.kind as ActivityEvent['kind'], title: row.title, xp: row.xp, createdAt: row.created_at, sourceId: row.source_id ?? undefined })),
   };
@@ -275,22 +358,177 @@ export async function saveWalletSetup(setup: WalletSetup) {
   });
 }
 
+export async function saveHomePreferences(preferences: HomePreferences) {
+  const db = await initializeDatabase();
+  const normalized = normalizeHomePreferences(preferences);
+  await db.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', HOME_PREFERENCES_KEY, JSON.stringify(normalized));
+}
+
+export async function saveReviewProposal(proposal: ReviewProposal) {
+  const db = await initializeDatabase();
+  await db.runAsync(
+    'INSERT OR REPLACE INTO review_proposals (id, source, organized_json, recording_json, created_at) VALUES (?, ?, ?, ?, ?)',
+    proposal.id,
+    proposal.source,
+    JSON.stringify(proposal.organized),
+    proposal.recording ? JSON.stringify(proposal.recording) : null,
+    proposal.createdAt,
+  );
+}
+
+export async function removeReviewProposal(id: string) {
+  const db = await initializeDatabase();
+  await db.runAsync('DELETE FROM review_proposals WHERE id = ?', id);
+}
+
+export async function saveSavingsGoal(goal: SavingsGoal) {
+  const db = await initializeDatabase();
+  await db.runAsync(`INSERT INTO savings_goals
+    (id, name, target_minor, saved_minor, payday_contribution_minor, target_date, active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, target_minor = excluded.target_minor,
+      saved_minor = excluded.saved_minor, payday_contribution_minor = excluded.payday_contribution_minor,
+      target_date = excluded.target_date, active = excluded.active, updated_at = excluded.updated_at`,
+  goal.id, goal.name, goal.targetMinor, goal.savedMinor, goal.paydayContributionMinor, goal.targetDate ?? null, Number(goal.active), goal.createdAt, goal.updatedAt);
+}
+
+export async function removeSavingsGoal(id: string) {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    await txn.runAsync('DELETE FROM goal_contribution_suggestions WHERE goal_id = ?', id);
+    await txn.runAsync('DELETE FROM savings_goals WHERE id = ?', id);
+  });
+}
+
+export async function resolveGoalContributionSuggestion(id: string, status: 'confirmed' | 'skipped') {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    const suggestion = await txn.getFirstAsync<GoalSuggestionRow>('SELECT * FROM goal_contribution_suggestions WHERE id = ?', id);
+    if (!suggestion || suggestion.status !== 'pending') throw new Error('This goal suggestion is no longer pending.');
+    const resolvedAt = new Date().toISOString();
+    if (status === 'confirmed') {
+      await txn.runAsync('UPDATE savings_goals SET saved_minor = MIN(target_minor, saved_minor + ?), updated_at = ? WHERE id = ?', suggestion.amount_minor, resolvedAt, suggestion.goal_id);
+    }
+    await txn.runAsync('UPDATE goal_contribution_suggestions SET status = ?, resolved_at = ? WHERE id = ?', status, resolvedAt, id);
+  });
+}
+
+export type ConfirmOccurrenceInput = {
+  amountMinor: number;
+  actualDate: string;
+  quantity?: string;
+  feesMinor?: number;
+  note?: string;
+  updateFutureAmount?: boolean;
+};
+
+export async function confirmFinancialOccurrence(id: string, input: ConfirmOccurrenceInput) {
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter the amount that actually happened.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.actualDate)) throw new Error('Use a valid actual date in YYYY-MM-DD format.');
+  const occurredAt = localNoonIso(input.actualDate);
+  if (localDateKey(new Date(occurredAt)) !== input.actualDate) throw new Error('Use a valid actual date.');
+  const feesMinor = input.feesMinor ?? 0;
+  if (!Number.isSafeInteger(feesMinor) || feesMinor < 0) throw new Error('Enter valid fees.');
+
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    const row = await txn.getFirstAsync<FinancialOccurrenceRow>('SELECT * FROM financial_occurrences WHERE id = ?', id);
+    if (!row || row.status !== 'pending') throw new Error('This scheduled entry is no longer pending.');
+    const transactionId = `money-${row.id}`;
+    const investmentId = row.kind === 'investment' ? `investment-${row.id}` : null;
+
+    if (row.kind === 'investment') {
+      if (!row.asset) throw new Error('This investment is missing its asset.');
+      const quantity = input.quantity?.trim() ?? '';
+      const unitPriceMinor = unitPriceMinorFromTotal(quantity, input.amountMinor);
+      if (unitPriceMinor == null) throw new Error('Enter the exact fractional quantity you received, with no more than 8 decimal places.');
+      await txn.runAsync(`INSERT INTO financial_transactions
+        (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
+        VALUES (?, 'investment', ?, ?, ?, ?, NULL, ?)`, transactionId, row.title, row.category, input.amountMinor + feesMinor, occurredAt, investmentId);
+      await txn.runAsync(`INSERT INTO investment_transactions
+        (id, asset, quantity, unit_price_minor, amount_minor, fees_minor, occurred_at, source_dump_id, cash_transaction_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)`, investmentId, row.asset, quantity, unitPriceMinor, input.amountMinor, feesMinor, occurredAt, transactionId);
+    } else {
+      await txn.runAsync(`INSERT INTO financial_transactions
+        (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
+        VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`, transactionId, row.kind, row.title, row.category, input.amountMinor, occurredAt);
+      if (row.kind === 'income') await insertGoalSuggestionsForIncome(txn, transactionId, input.amountMinor);
+    }
+
+    const resolvedAt = new Date().toISOString();
+    await txn.runAsync(`UPDATE financial_occurrences SET status = 'confirmed', actual_amount_minor = ?, actual_date = ?,
+      quantity = ?, fees_minor = ?, note = ?, transaction_id = ?, investment_id = ?, updated_at = ?, resolved_at = ? WHERE id = ?`,
+    input.amountMinor, input.actualDate, input.quantity?.trim() || null, feesMinor, input.note?.trim() || null, transactionId, investmentId, resolvedAt, resolvedAt, id);
+    if (input.updateFutureAmount) await txn.runAsync('UPDATE recurring_rules SET amount_minor = ?, updated_at = ? WHERE id = ?', input.amountMinor, resolvedAt, row.rule_id);
+  });
+}
+
+export async function matchFinancialOccurrence(id: string, transactionId: string) {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    const occurrence = await txn.getFirstAsync<FinancialOccurrenceRow>('SELECT * FROM financial_occurrences WHERE id = ?', id);
+    if (!occurrence || occurrence.status !== 'pending') throw new Error('This scheduled entry is no longer pending.');
+    const transaction = await txn.getFirstAsync<FinancialTransactionRow>('SELECT * FROM financial_transactions WHERE id = ?', transactionId);
+    if (!transaction || transaction.type !== occurrence.kind) throw new Error('That wallet record cannot be matched to this scheduled entry.');
+
+    let actualAmountMinor = transaction.amount_minor;
+    let quantity: string | null = null;
+    let feesMinor = 0;
+    let investmentId: string | null = null;
+    if (occurrence.kind === 'investment') {
+      const investment = await txn.getFirstAsync<InvestmentTransactionRow>('SELECT * FROM investment_transactions WHERE cash_transaction_id = ?', transaction.id);
+      if (!investment || investment.asset !== occurrence.asset) throw new Error('The matching investment purchase could not be found.');
+      actualAmountMinor = investment.amount_minor;
+      quantity = investment.quantity;
+      feesMinor = investment.fees_minor;
+      investmentId = investment.id;
+    }
+
+    if (occurrence.kind === 'income') await insertGoalSuggestionsForIncome(txn, transaction.id, transaction.amount_minor);
+    const now = new Date().toISOString();
+    const actualDate = localDateKey(new Date(transaction.occurred_at));
+    const result = await txn.runAsync(`UPDATE financial_occurrences SET status = 'confirmed', actual_amount_minor = ?, actual_date = ?,
+      quantity = ?, fees_minor = ?, note = ?, transaction_id = ?, investment_id = ?, updated_at = ?, resolved_at = ?
+      WHERE id = ? AND status = 'pending'`, actualAmountMinor, actualDate, quantity, feesMinor, 'Matched to an existing wallet record.', transaction.id, investmentId, now, now, id);
+    if (!result.changes) throw new Error('This scheduled entry is no longer pending.');
+  });
+}
+
+export async function skipFinancialOccurrence(id: string, note?: string) {
+  const db = await initializeDatabase();
+  const now = new Date().toISOString();
+  const result = await db.runAsync(`UPDATE financial_occurrences SET status = 'skipped', note = ?, updated_at = ?, resolved_at = ? WHERE id = ? AND status = 'pending'`, note?.trim() || null, now, now, id);
+  if (!result.changes) throw new Error('This scheduled entry is no longer pending.');
+}
+
+export async function postponeFinancialOccurrence(id: string, dueDate: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || localDateKey(new Date(localNoonIso(dueDate))) !== dueDate) throw new Error('Use a valid review date.');
+  const db = await initializeDatabase();
+  const result = await db.runAsync(`UPDATE financial_occurrences SET due_date = ?, updated_at = ? WHERE id = ? AND status = 'pending'`, dueDate, new Date().toISOString(), id);
+  if (!result.changes) throw new Error('This scheduled entry is no longer pending.');
+}
+
 export async function saveConfirmedBundle(bundle: {
-  dump: VoiceDump;
+  dump?: VoiceDump;
   items: ThoughtItem[];
   projects: Project[];
   transactions: FinancialTransaction[];
   investments: InvestmentTransaction[];
   activity: ActivityEvent;
+  reviewProposalId?: string;
 }) {
   const db = await initializeDatabase();
   await withWriteTransaction(db, async (txn) => {
-    await insertVoiceDump(txn, bundle.dump);
+    if (bundle.dump) await insertVoiceDump(txn, bundle.dump);
     for (const item of bundle.items) await insertThoughtItem(txn, item);
     for (const project of bundle.projects) await insertProject(txn, project);
-    for (const transaction of bundle.transactions) await insertFinancialTransaction(txn, transaction);
+    for (const transaction of bundle.transactions) {
+      await insertFinancialTransaction(txn, transaction);
+      if (transaction.type === 'income') await insertGoalSuggestionsForIncome(txn, transaction.id, transaction.amountMinor);
+    }
     for (const investment of bundle.investments) await insertInvestmentTransaction(txn, investment);
     await insertActivity(txn, bundle.activity);
+    if (bundle.reviewProposalId) await txn.runAsync('DELETE FROM review_proposals WHERE id = ?', bundle.reviewProposalId);
   });
 }
 
@@ -325,7 +563,10 @@ export async function saveProjectSession(session: ProjectSession, activity: Acti
 
 export async function saveFinancialTransaction(transaction: FinancialTransaction) {
   const db = await initializeDatabase();
-  await insertFinancialTransaction(db, transaction);
+  await withWriteTransaction(db, async (txn) => {
+    await insertFinancialTransaction(txn, transaction);
+    if (transaction.type === 'income') await insertGoalSuggestionsForIncome(txn, transaction.id, transaction.amountMinor);
+  });
 }
 
 export async function removeFinancialTransactionRecord(id: string) {
@@ -427,6 +668,22 @@ async function insertActivity(executor: SqlExecutor, activity: ActivityEvent) {
   await executor.runAsync('INSERT OR IGNORE INTO activity_events (id, kind, title, xp, created_at, source_id) VALUES (?, ?, ?, ?, ?, ?)', activity.id, activity.kind, activity.title, activity.xp, activity.createdAt, activity.sourceId ?? null);
 }
 
+async function insertGoalSuggestionsForIncome(executor: SQLite.SQLiteDatabase, transactionId: string, incomeMinor: number) {
+  const goals = await executor.getAllAsync<SavingsGoalRow>('SELECT * FROM savings_goals WHERE active = 1 AND payday_contribution_minor > 0 AND saved_minor < target_minor');
+  const createdAt = new Date().toISOString();
+  let availableIncomeMinor = incomeMinor;
+  for (const goal of goals) {
+    if (availableIncomeMinor <= 0) break;
+    const remaining = goal.target_minor - goal.saved_minor;
+    const amountMinor = Math.min(goal.payday_contribution_minor, remaining, availableIncomeMinor);
+    if (amountMinor <= 0) continue;
+    await executor.runAsync(`INSERT OR IGNORE INTO goal_contribution_suggestions
+      (id, goal_id, source_transaction_id, amount_minor, status, created_at)
+      VALUES (?, ?, ?, ?, 'pending', ?)`, `goal-suggestion-${goal.id}-${transactionId}`, goal.id, transactionId, amountMinor, createdAt);
+    availableIncomeMinor -= amountMinor;
+  }
+}
+
 type SqlExecutor = Pick<SQLite.SQLiteDatabase, 'runAsync'>;
 
 async function withWriteTransaction(db: SQLite.SQLiteDatabase, task: (txn: SQLite.SQLiteDatabase) => Promise<void>) {
@@ -447,42 +704,51 @@ type ActivityEventRow = { id: string; kind: string; title: string; xp: number; c
 type RecurringRuleRow = { id: string; kind: string; title: string; category: string; amount_minor: number; days_json: string; asset: string | null; quantity: string | null; active: number; starts_on: string; created_at: string; updated_at: string };
 type MonthlyBudgetRow = { id: string; category: string; limit_minor: number; active: number; created_at: string; updated_at: string };
 type SettingRow = { key: string; value: string };
+type FinancialOccurrenceRow = { id: string; rule_id: string; kind: string; title: string; category: string; planned_amount_minor: number; scheduled_date: string; due_date: string; asset: string | null; status: string; actual_amount_minor: number | null; actual_date: string | null; quantity: string | null; fees_minor: number | null; note: string | null; transaction_id: string | null; investment_id: string | null; created_at: string; updated_at: string; resolved_at: string | null };
+type SavingsGoalRow = { id: string; name: string; target_minor: number; saved_minor: number; payday_contribution_minor: number; target_date: string | null; active: number; created_at: string; updated_at: string };
+type GoalSuggestionRow = { id: string; goal_id: string; source_transaction_id: string; amount_minor: number; status: string; created_at: string; resolved_at: string | null };
+type ReviewProposalRow = { id: string; source: string; organized_json: string; recording_json: string | null; created_at: string };
 
-async function postDueRecurringRules(db: SQLite.SQLiteDatabase) {
+async function createDueRecurringOccurrences(db: SQLite.SQLiteDatabase) {
   const rules = await db.getAllAsync<RecurringRuleRow>('SELECT * FROM recurring_rules WHERE active = 1');
   const through = localDateKey(new Date());
   for (const row of rules) {
     const dates = scheduledDatesThrough({ days: safeArray<number>(row.days_json), startsOn: row.starts_on }, through);
     for (const scheduledDate of dates) {
-      const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM recurring_occurrences WHERE rule_id = ? AND scheduled_date = ?', row.id, scheduledDate);
-      if (existing) continue;
-      const occurrenceId = `occurrence-${row.id}-${scheduledDate}`;
-      const transactionId = `money-${row.id}-${scheduledDate}`;
-      const occurredAt = localNoonIso(scheduledDate);
-      const investmentId = row.kind === 'investment' ? `investment-${row.id}-${scheduledDate}` : null;
-
-      if (row.kind === 'investment') {
-        if (!row.asset) continue;
-        const quote = await db.getFirstAsync<{ priceMinor: number; asOf: string }>(
-          'SELECT price_minor AS priceMinor, as_of AS asOf FROM market_quotes WHERE asset = ?',
-          row.asset,
-        );
-        const purchase = investmentPurchaseFromBudget(row.amount_minor, quote);
-        if (!purchase) continue;
-        await db.runAsync(`INSERT OR IGNORE INTO financial_transactions
-          (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
-          VALUES (?, 'investment', ?, ?, ?, ?, NULL, ?)`, transactionId, row.title, row.category, row.amount_minor, occurredAt, investmentId);
-        await db.runAsync(`INSERT OR IGNORE INTO investment_transactions
-          (id, asset, quantity, unit_price_minor, amount_minor, fees_minor, occurred_at, source_dump_id, cash_transaction_id)
-          VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?)`, investmentId, row.asset, purchase.quantity, purchase.unitPriceMinor, row.amount_minor, occurredAt, transactionId);
-      } else {
-        await db.runAsync(`INSERT OR IGNORE INTO financial_transactions
-          (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
-          VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)`, transactionId, row.kind, row.title, row.category, row.amount_minor, occurredAt);
-      }
-      await db.runAsync('INSERT OR IGNORE INTO recurring_occurrences (id, rule_id, scheduled_date, transaction_id, investment_id, created_at) VALUES (?, ?, ?, ?, ?, ?)', occurrenceId, row.id, scheduledDate, transactionId, investmentId, new Date().toISOString());
+      const legacy = await db.getFirstAsync<{ id: string }>('SELECT id FROM recurring_occurrences WHERE rule_id = ? AND scheduled_date = ?', row.id, scheduledDate);
+      if (legacy) continue;
+      const now = new Date().toISOString();
+      await db.runAsync(`INSERT OR IGNORE INTO financial_occurrences
+        (id, rule_id, kind, title, category, planned_amount_minor, scheduled_date, due_date, asset, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      `occurrence-${row.id}-${scheduledDate}`, row.id, row.kind, row.title, row.category, row.amount_minor, scheduledDate, scheduledDate, row.asset, now, now);
     }
   }
+}
+
+function fromFinancialOccurrenceRow(row: FinancialOccurrenceRow): FinancialOccurrence {
+  return {
+    id: row.id,
+    ruleId: row.rule_id,
+    kind: row.kind as FinancialOccurrence['kind'],
+    title: row.title,
+    category: row.category,
+    plannedAmountMinor: row.planned_amount_minor,
+    scheduledDate: row.scheduled_date,
+    dueDate: row.due_date,
+    asset: (row.asset as FinancialOccurrence['asset']) ?? undefined,
+    status: row.status as FinancialOccurrence['status'],
+    actualAmountMinor: row.actual_amount_minor ?? undefined,
+    actualDate: row.actual_date ?? undefined,
+    quantity: row.quantity ?? undefined,
+    feesMinor: row.fees_minor ?? undefined,
+    note: row.note ?? undefined,
+    transactionId: row.transaction_id ?? undefined,
+    investmentId: row.investment_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    resolvedAt: row.resolved_at ?? undefined,
+  };
 }
 
 function fromThoughtItemRow(row: ThoughtItemRow): ThoughtItem {

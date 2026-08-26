@@ -23,6 +23,7 @@ export default function WalletScreen() {
   const forecast = calculateFinancialForecast(data, summary.balance);
   const planCount = data.recurringRules.filter((rule) => rule.kind !== 'expense').length;
   const subscriptionCount = data.recurringRules.filter((rule) => rule.kind === 'expense').length;
+  const pendingReviewCount = data.financialOccurrences.filter((item) => item.status === 'pending').length + data.goalSuggestions.filter((item) => item.status === 'pending').length + data.reviewProposals.length;
   const money = (value: number) => formatMoney(value, currency, summary.usdPhp);
 
   const chooseCurrency = (next: DisplayCurrency) => {
@@ -56,7 +57,7 @@ export default function WalletScreen() {
       </View>
 
       <Pressable accessibilityRole="button" onPress={() => router.push('/wallet/forecast' as Href)} style={({ pressed }) => [styles.safeCard, pressed && styles.pressed]}>
-        <View style={styles.safeIcon}><Feather name="shield" size={19} color={colors.paper} /></View><View style={styles.rowMain}><Text style={styles.safeLabel}>Safe to spend</Text><Text style={styles.safeDetail}>After scheduled bills, investments, and budget reserves</Text></View><Text style={styles.safeValue}>{money(forecast.safeToSpendMinor)}</Text><Feather name="chevron-right" size={18} color={colors.muted} />
+        <View style={styles.safeIcon}><Feather name="shield" size={19} color={colors.paper} /></View><View style={styles.rowMain}><Text style={styles.safeLabel}>Safe to spend</Text><Text style={styles.safeDetail}>After scheduled commitments, budgets, and savings goals</Text></View><Text style={styles.safeValue}>{money(forecast.safeToSpendMinor)}</Text><Feather name="chevron-right" size={18} color={colors.muted} />
       </Pressable>
 
       <View style={styles.section}>
@@ -65,16 +66,15 @@ export default function WalletScreen() {
           <QuickAction icon="arrow-down-left" title="Add money" detail="Salary, deposit, or cash adjustment" onPress={() => router.push({ pathname: '/wallet/activity', params: { action: 'add', type: 'income' } } as Href)} />
           <QuickAction icon="arrow-up-right" title="Add expense" detail="Purchase or bill" onPress={() => router.push({ pathname: '/wallet/activity', params: { action: 'add', type: 'expense' } } as Href)} />
           <QuickAction icon="trending-up" title="Add investment" detail="BTC or VOO purchase" onPress={() => router.push({ pathname: '/wallet/investments', params: { action: 'add' } } as Href)} />
-          <QuickAction icon="repeat" title="Plan month" detail="Salary, investments, budgets" onPress={() => router.push('/wallet/planning' as Href)} />
         </View>
       </View>
 
       <View style={styles.section}>
         <SectionHeading title="Explore wallet" />
         <View style={styles.list}>
-          <DestinationRow icon="list" title="Activity" detail={`${data.transactions.length} money ${data.transactions.length === 1 ? 'record' : 'records'}`} onPress={() => router.push('/wallet/activity' as Href)} />
+          <DestinationRow icon="inbox" title="Review inbox" detail={pendingReviewCount ? `${pendingReviewCount} waiting for confirmation` : 'Nothing waiting for confirmation'} onPress={() => router.push('/wallet/inbox' as Href)} />
           <DestinationRow icon="trending-up" title="Investments" detail="BTC and VOO positions" onPress={() => router.push('/wallet/investments' as Href)} />
-          <DestinationRow icon="shield" title="Forecast and safe-to-spend" detail="Upcoming commitments and available cash" onPress={() => router.push('/wallet/forecast' as Href)} />
+          <DestinationRow icon="target" title="Savings goals" detail={`${data.savingsGoals.length} ${data.savingsGoals.length === 1 ? 'goal' : 'goals'} · ${money(forecast.reservedGoalsMinor)} reserved`} onPress={() => router.push('/wallet/goals' as Href)} />
           <DestinationRow icon="credit-card" title="Subscriptions and bills" detail={`${subscriptionCount} recurring ${subscriptionCount === 1 ? 'expense' : 'expenses'}`} onPress={() => router.push('/wallet/subscriptions' as Href)} />
           <DestinationRow icon="repeat" title="Plans and budgets" detail={`${planCount} automations · ${data.budgets.length} budgets`} onPress={() => router.push('/wallet/planning' as Href)} />
         </View>

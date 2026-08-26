@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { colors, fonts, radius } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
-import { InvestmentAsset, MoneyTransactionType, MonthlyBudget, RecurringRule, RecurringRuleKind } from '@/types';
+import { InvestmentAsset, MoneyTransactionType, MonthlyBudget, RecurringRule, RecurringRuleKind, SavingsGoal } from '@/types';
 import { appendDecimalPoint, normalizeDecimalQuantityInput, parsePesoToMinor } from '@/utils/money';
 import { localDateKey, localNoonIso, parseMonthlyDays } from '@/utils/recurrence';
 
@@ -200,7 +200,7 @@ export function RecurringRuleForm({ initialRule, onDone, onCancel, mode = 'autom
   };
 
   return (
-    <FormCard title={mode === 'subscription' ? initialRule ? 'Edit subscription or bill' : 'Add subscription or bill' : initialRule ? 'Edit automation' : 'Add monthly automation'} description={mode === 'subscription' ? 'Mewmo deducts this expense once on each due date when automation is on.' : 'Salary and investment records post once when due or when you next open Mewmo.'} onClose={onCancel}>
+    <FormCard title={mode === 'subscription' ? initialRule ? 'Edit subscription or bill' : 'Add subscription or bill' : initialRule ? 'Edit automation' : 'Add monthly automation'} description={mode === 'subscription' ? 'Each due date becomes a pending payment for you to edit or confirm.' : 'Each due salary or investment becomes an editable item in Review.'} onClose={onCancel}>
       {mode === 'automation' ? <ChoiceGroup label="Automation type" options={[{ value: 'income', label: 'Salary / income' }, { value: 'investment', label: 'Investment' }]} value={kind as Exclude<RecurringRuleKind, 'expense'>} onChange={chooseKind} /> : null}
       {kind === 'investment' ? <ChoiceGroup label="Asset" options={[{ value: 'BTC', label: 'Bitcoin (BTC)' }, { value: 'VOO', label: 'Vanguard VOO' }]} value={asset} onChange={setAsset} /> : null}
       <Field label="Name" value={title} onChangeText={setTitle} placeholder={kind === 'income' ? 'Salary' : kind === 'expense' ? 'Home internet' : `${asset} contribution`} />
@@ -208,8 +208,8 @@ export function RecurringRuleForm({ initialRule, onDone, onCancel, mode = 'autom
       <Field label={kind === 'investment' ? 'Investment budget each time' : 'Amount each time'} hint="Philippine pesos" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
       <Field label="Days of the month" hint="Comma-separated, for example 15, 30" value={days} onChangeText={setDays} keyboardType="numbers-and-punctuation" placeholder="15, 30" />
       <Field label="Start date" hint="YYYY-MM-DD; older dates can create due entries when saved" value={startsOn} onChangeText={setStartsOn} placeholder="2026-08-24" />
-      {kind === 'investment' ? <Text style={styles.note}>When a due entry is processed, Mewmo uses the latest available price to estimate the fractional {asset === 'VOO' ? 'shares' : 'BTC'} your PHP budget represents. If prices are unavailable, the entry waits instead of using a guessed quantity. This tracks the plan in Mewmo; it does not place an order with a broker.</Text> : null}
-      <Text style={styles.note}>If a month is shorter than the chosen day, Mewmo uses that month’s final day. Pausing or deleting the automation keeps posted history.</Text>
+      {kind === 'investment' ? <Text style={styles.note}>Mewmo may show an estimate using the latest price, but confirmation asks for the exact fractional {asset === 'VOO' ? 'shares' : 'BTC'} and purchase date from your broker. This tracks your plan; it does not place an order.</Text> : null}
+      <Text style={styles.note}>If a month is shorter than the chosen day, Mewmo uses that month’s final day. Nothing changes your wallet until you confirm the pending occurrence.</Text>
       <SubmitButton label={saving ? 'Saving…' : initialRule ? 'Save changes' : mode === 'subscription' ? 'Add subscription or bill' : 'Add automation'} disabled={saving} onPress={save} />
     </FormCard>
   );
@@ -233,6 +233,46 @@ export function BudgetForm({ initialBudget, onDone, onCancel }: { initialBudget?
       <Field label="Expense category" hint="Use the same category when recording an expense" value={category} onChangeText={setCategory} placeholder="Groceries" />
       <Field label="Monthly limit" hint="Philippine pesos" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
       <SubmitButton label={saving ? 'Saving…' : initialBudget ? 'Save changes' : 'Set budget'} disabled={saving} onPress={save} />
+    </FormCard>
+  );
+}
+
+export function SavingsGoalForm({ initialGoal, onDone, onCancel }: { initialGoal?: SavingsGoal; onDone: FormCompletion; onCancel: FormCompletion }) {
+  const { saveGoal } = useItems();
+  const { showDialog } = useAppDialog();
+  const [name, setName] = useState(initialGoal?.name ?? '');
+  const [target, setTarget] = useState(initialGoal ? String(initialGoal.targetMinor / 100) : '');
+  const [saved, setSaved] = useState(initialGoal ? String(initialGoal.savedMinor / 100) : '0');
+  const [paydayContribution, setPaydayContribution] = useState(initialGoal ? String(initialGoal.paydayContributionMinor / 100) : '0');
+  const [targetDate, setTargetDate] = useState(initialGoal?.targetDate ?? '');
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    const targetMinor = parsePesoToMinor(target);
+    const savedMinor = parsePesoToMinor(saved);
+    const paydayContributionMinor = parsePesoToMinor(paydayContribution);
+    if (!name.trim() || !targetMinor || savedMinor == null || paydayContributionMinor == null || (targetDate && !validDate(targetDate))) {
+      return showDialog({ title: 'Check this savings goal', message: 'Add a name, target, valid reserved amount, optional payday suggestion, and a target date in YYYY-MM-DD format.', tone: 'warning' });
+    }
+    setSaving(true);
+    try {
+      await saveGoal({ name, targetMinor, savedMinor, paydayContributionMinor, targetDate: targetDate || undefined }, initialGoal?.id);
+      onDone();
+    } catch (error) {
+      showDialog({ title: 'Could not save goal', message: message(error), tone: 'danger' });
+      setSaving(false);
+    }
+  };
+
+  return (
+    <FormCard title={initialGoal ? 'Edit savings goal' : 'Add savings goal'} description="Reserve part of your existing wallet for a purpose without recording it as money spent." onClose={onCancel}>
+      <Field label="Goal name" value={name} onChangeText={setName} placeholder="Emergency fund" />
+      <Field label="Target amount" hint="Philippine pesos" value={target} onChangeText={setTarget} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
+      <Field label="Reserved so far" hint="Reduces safe-to-spend, not wallet balance" value={saved} onChangeText={setSaved} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
+      <Field label="Suggest after each payday" hint="Optional; you still confirm it" value={paydayContribution} onChangeText={setPaydayContribution} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
+      <Field label="Target date" hint="Optional · YYYY-MM-DD" value={targetDate} onChangeText={setTargetDate} placeholder="2027-01-31" />
+      <Text style={styles.note}>A payday suggestion appears in Review only after confirmed income. Confirming it increases this reserved progress; it never creates an expense.</Text>
+      <SubmitButton label={saving ? 'Saving…' : initialGoal ? 'Save changes' : 'Add goal'} disabled={saving} onPress={save} />
     </FormCard>
   );
 }

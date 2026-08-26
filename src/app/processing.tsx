@@ -16,7 +16,7 @@ const categories: Category[] = ['task', 'reminder', 'idea', 'note'];
 
 export default function ProcessingScreen() {
   const router = useRouter();
-  const { pendingRecording, processingError, setProcessingError, setPendingRecording, setPendingOrganizedDump } = useItems();
+  const { pendingRecording, processingError, setProcessingError, setPendingRecording, setPendingOrganizedDump, queueReviewProposal } = useItems();
   const [step, setStep] = useState(0);
   const [attempt, setAttempt] = useState(0);
   const running = useRef(false);
@@ -30,13 +30,14 @@ export default function ProcessingScreen() {
       const organized = await organizeRecording(pendingRecording);
       setStep(3);
       setPendingOrganizedDump(organized);
+      const proposal = await queueReviewProposal('voice', organized, pendingRecording);
       setStep(4);
-      setTimeout(() => router.replace('/review'), 350);
+      setTimeout(() => router.replace({ pathname: '/review', params: { id: proposal.id } }), 350);
     } catch (error) {
       setProcessingError(error instanceof Error ? error.message : 'Something went wrong while organizing the recording.');
       running.current = false;
     }
-  }, [pendingRecording, router, setPendingOrganizedDump, setProcessingError]);
+  }, [pendingRecording, queueReviewProposal, router, setPendingOrganizedDump, setProcessingError]);
 
   useEffect(() => {
     if (!pendingRecording) {
