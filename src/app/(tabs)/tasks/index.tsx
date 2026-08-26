@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { ItemRow } from '@/components/ItemRow';
 import { PageHeader } from '@/components/page-header';
@@ -18,6 +19,7 @@ const modes: { value: ViewMode; label: string }[] = [
 ];
 
 export default function TasksScreen() {
+  const { showDialog } = useAppDialog();
   const router = useRouter();
   const { items, projects, addProject } = useItems();
   const [mode, setMode] = useState<ViewMode>('focus');
@@ -29,21 +31,21 @@ export default function TasksScreen() {
   const activeProjects = projects.filter((project) => project.status === 'active');
 
   const createProject = async () => {
-    if (!projectName.trim()) return Alert.alert('Add a project name', 'Name the outcome or area you want Mewmo to remember.');
+    if (!projectName.trim()) return showDialog({ title: 'Add a project name', message: 'Name the outcome or area you want Mewmo to remember.', tone: 'warning' });
     setSavingProject(true);
     try {
       const project = await addProject({ name: projectName, nextAction });
       setProjectName(''); setNextAction(''); setAddingProject(false);
       router.push({ pathname: '/project/[id]', params: { id: project.id } });
     } catch (error) {
-      Alert.alert('Could not create project', error instanceof Error ? error.message : 'Try again.');
+      showDialog({ title: 'Could not create project', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
       setSavingProject(false);
     }
   };
 
   return (
     <AppScreen tabbed assistant={!addingProject}>
-      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<Pressable accessibilityLabel="Search tasks and captured items" onPress={() => router.push('/tasks/search')} style={styles.iconButton}><Feather name="search" size={20} color={colors.ink} /></Pressable>} />
+      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={styles.iconButton}><Feather name="calendar" size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Search tasks and captured items" onPress={() => router.push('/tasks/search')} style={styles.iconButton}><Feather name="search" size={20} color={colors.ink} /></Pressable></View>} />
       <View accessibilityRole="tablist" style={styles.tabs}>{modes.map((item) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === item.value }} key={item.value} onPress={() => setMode(item.value)} style={[styles.tab, mode === item.value && styles.tabActive]}><Text numberOfLines={1} style={[styles.tabText, mode === item.value && styles.tabTextActive]}>{item.label}</Text></Pressable>)}</View>
 
       <View style={styles.contextRow}><Text style={styles.contextTitle}>{modeTitle(mode)}</Text><View style={styles.contextActions}>{mode === 'projects' ? <Pressable accessibilityRole="button" onPress={() => setAddingProject((value) => !value)} style={styles.newProject}><Feather name={addingProject ? 'x' : 'plus'} size={16} color={colors.ink} /><Text style={styles.newProjectText}>{addingProject ? 'Close' : 'New project'}</Text></Pressable> : null}<Text style={styles.count}>{mode === 'projects' ? activeProjects.length : filtered.length}</Text></View></View>
@@ -68,6 +70,7 @@ function modeTitle(mode: ViewMode) { return mode === 'focus' ? 'Needs attention'
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="inbox" size={21} color={colors.muted} /></View><View style={styles.emptyMain}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text></View></View>; }
 
 const styles = StyleSheet.create({
+  headerActions: { flexDirection: 'row', gap: 6 },
   iconButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   tabs: { marginTop: 24, padding: 4, flexDirection: 'row', borderRadius: 12, backgroundColor: colors.border },
   tab: { flex: 1, minWidth: 0, minHeight: 40, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

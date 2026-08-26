@@ -2,7 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -10,12 +11,13 @@ import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { OrganizedItemInput, SuggestionKind } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
-import { formatPeso, parsePesoToMinor } from '@/utils/money';
+import { formatPeso, normalizeDecimalQuantityInput, parsePesoToMinor } from '@/utils/money';
 
 const kinds: SuggestionKind[] = ['task', 'reminder', 'project', 'expense', 'income', 'investment', 'idea', 'note'];
 const labels: Record<SuggestionKind, string> = { task: 'TASK', reminder: 'REMINDER', project: 'PROJECT', expense: 'EXPENSE', income: 'INCOME', investment: 'INVESTMENT', idea: 'IDEA', note: 'NOTE' };
 
 export default function ReviewScreen() {
+  const { showDialog } = useAppDialog();
   const router = useRouter();
   const { pendingOrganizedDump, pendingRecording, confirmOrganizedDump, setPendingOrganizedDump, setPendingRecording } = useItems();
   const [items, setItems] = useState<OrganizedItemInput[]>(pendingOrganizedDump?.items ?? []);
@@ -36,12 +38,12 @@ export default function ReviewScreen() {
     const current = items[index];
     update(index, { category: kinds[(kinds.indexOf(current.category) + 1) % kinds.length] });
   };
-  const discard = () => confirmAction({ title: 'Discard this recording?', message: 'The original audio and all suggestions will be removed.', confirmLabel: 'Discard', cancelLabel: 'Keep reviewing', onConfirm: async () => {
+  const discard = () => showDialog(confirmAction({ title: 'Discard this recording?', message: 'The original audio and all suggestions will be removed.', confirmLabel: 'Discard', cancelLabel: 'Keep reviewing', onConfirm: async () => {
       await FileSystem.deleteAsync(pendingRecording.uri, { idempotent: true }).catch(() => undefined);
       setPendingRecording(null);
       setPendingOrganizedDump(null);
       router.replace('/');
-    } });
+    } }));
   const confirm = async () => {
     if (invalidCount) return setError('Complete the highlighted money or investment details before confirming.');
     setSaving(true);
@@ -70,13 +72,14 @@ export default function ReviewScreen() {
                 <Pressable accessibilityLabel={`Remove ${item.title}`} onPress={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} style={styles.remove}><Feather name="x" size={18} color={colors.secondary} /></Pressable>
               </View>
               <TextInput accessibilityLabel={`${labels[item.category]} title`} value={item.title} onChangeText={(title) => update(index, { title })} style={styles.input} />
+              {item.category === 'reminder' && item.dueAt ? <Text style={styles.schedule}>{new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(item.dueAt))}{item.recurrence ? ` · Repeats ${item.recurrence}` : ''}</Text> : null}
               {(item.category === 'income' || item.category === 'expense' || item.category === 'investment') ? <View style={styles.moneyRow}>
                 <Text style={styles.currency}>₱</Text><TextInput accessibilityLabel="Amount in Philippine pesos" keyboardType="decimal-pad" defaultValue={item.amountMinor ? (item.amountMinor / 100).toFixed(2) : ''} onChangeText={(value) => update(index, { amountMinor: parsePesoToMinor(value) })} placeholder="0.00" placeholderTextColor={colors.muted} style={styles.moneyInput} />
                 {item.amountMinor ? <Text style={styles.amountPreview}>{formatPeso(item.amountMinor)}</Text> : null}
               </View> : null}
               {item.category === 'investment' ? <View style={styles.investmentRow}>
                 <Pressable onPress={() => update(index, { asset: item.asset === 'BTC' ? 'VOO' : 'BTC' })} style={styles.asset}><Text style={styles.assetText}>{item.asset ?? 'CHOOSE ASSET'}</Text></Pressable>
-                <TextInput accessibilityLabel="Asset quantity" keyboardType="decimal-pad" value={item.quantity ?? ''} onChangeText={(quantity) => update(index, { quantity })} placeholder="Quantity" placeholderTextColor={colors.muted} style={styles.quantity} />
+                <TextInput accessibilityLabel="Asset quantity" autoCorrect={false} inputMode="decimal" keyboardType="decimal-pad" value={item.quantity ?? ''} onChangeText={(quantity) => update(index, { quantity: normalizeDecimalQuantityInput(quantity) })} placeholder="Fractional quantity, e.g. 0.04" placeholderTextColor={colors.muted} style={styles.quantity} />
               </View> : null}
             </View>
           );
@@ -106,6 +109,7 @@ const styles = StyleSheet.create({
   kindText: { fontFamily: fonts.pixelSemiBold, fontSize: 12, color: colors.accent },
   remove: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   input: { height: 44, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.ink },
+  schedule: { marginTop: 8, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
   moneyRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 6 },
   currency: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.ink },
   moneyInput: { minWidth: 100, height: 44, fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.ink },

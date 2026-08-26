@@ -19,6 +19,7 @@ import {
   saveProject,
   saveProjectSession,
   saveRecurringRule,
+  saveWalletSetup,
   updateThoughtItem,
 } from '@/data/database';
 import { cancelAllItemNotifications, cancelItemNotification, scheduleItemNotification } from '@/services/notifications';
@@ -38,12 +39,19 @@ import {
   ProjectSession,
   RecurringRule,
   RecurringRuleKind,
+  ReminderFrequency,
   ThoughtItem,
   VoiceDump,
+  WalletSetup,
 } from '@/types';
 import { dateLabelFor, timeLabelFor } from '@/utils/date';
 import { unitPriceMinorFromTotal } from '@/utils/money';
-import { localDateKey, normalizeMonthlyDays } from '@/utils/recurrence';
+import { marketQuotesNeedRefresh } from '@/utils/market';
+import { localDateKey, localNoonIso, normalizeMonthlyDays } from '@/utils/recurrence';
+import { recurrenceForDate } from '@/utils/reminders';
+
+type ReminderInput = { title: string; detail?: string; dueAt: string; recurrence?: ReminderFrequency | null; enabled?: boolean };
+type RecurringRuleInput = { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; startsOn?: string };
 
 type ItemsContextValue = AppDataSnapshot & {
   hydrated: boolean;
@@ -51,6 +59,7 @@ type ItemsContextValue = AppDataSnapshot & {
   pendingOrganizedDump: OrganizedDump | null;
   latestItemIds: string[];
   processingError: string | null;
+  marketRefreshError: string | null;
   notificationEnabled: boolean;
   rewardsEnabled: boolean;
   totalXp: number;
@@ -68,6 +77,9 @@ type ItemsContextValue = AppDataSnapshot & {
   changeCategory: (id: string, category: Category) => void;
   updateTitle: (id: string, title: string) => void;
   scheduleTomorrow: (id: string) => Promise<void>;
+  addReminder: (input: ReminderInput) => Promise<ThoughtItem>;
+  updateReminder: (id: string, input: ReminderInput) => Promise<void>;
+  toggleReminderEnabled: (id: string) => Promise<void>;
   addSubtask: (id: string, title: string) => void;
   toggleSubtask: (itemId: string, subtaskId: string) => void;
   addProject: (input: Pick<Project, 'name'> & Partial<Pick<Project, 'summary' | 'nextAction'>>) => Promise<Project>;
@@ -77,12 +89,13 @@ type ItemsContextValue = AppDataSnapshot & {
   addInvestment: (input: { asset: InvestmentAsset; quantity: string; amountMinor: number; feesMinor?: number; occurredAt?: string }) => Promise<void>;
   updateQuote: (asset: InvestmentAsset, priceMinor: number, source?: string) => Promise<void>;
   refreshMarketQuotes: () => Promise<void>;
-  addRecurringRule: (input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => Promise<void>;
-  updateRecurringRule: (id: string, input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => Promise<void>;
+  addRecurringRule: (input: RecurringRuleInput) => Promise<void>;
+  updateRecurringRule: (id: string, input: RecurringRuleInput) => Promise<void>;
   toggleRecurringRule: (id: string) => Promise<void>;
   deleteRecurringRule: (id: string) => Promise<void>;
   saveBudget: (category: string, limitMinor: number, id?: string) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
+  setWalletSetup: (setup: WalletSetup) => Promise<void>;
   exportData: () => Promise<string>;
 };
 
@@ -111,6 +124,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const [pendingOrganizedDump, setPendingOrganizedDump] = useState<OrganizedDump | null>(null);
   const [latestItemIds, setLatestItemIds] = useState<string[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [marketRefreshError, setMarketRefreshError] = useState<string | null>(null);
   const [notificationEnabled, setNotificationEnabledState] = useState(() => readMigratedPreference(NOTIFICATIONS_KEY, LEGACY_NOTIFICATIONS_KEY));
   const [rewardsEnabled, setRewardsEnabledState] = useState(() => readMigratedPreference(REWARDS_KEY, LEGACY_REWARDS_KEY));
 
@@ -120,14 +134,38 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     refresh().catch((error) => setProcessingError(error instanceof Error ? error.message : 'Could not open local storage.')).finally(() => setHydrated(true));
   }, [refresh]);
 
+  useEffect(() => {
+    const needsMarketPrices = data.investments.length > 0 || data.recurringRules.some((rule) => rule.active && rule.kind === 'investment');
+    if (!hydrated || !needsMarketPrices || !marketQuotesNeedRefresh(data.quotes)) return;
+    let active = true;
+    const refreshStaleMarketQuotes = async () => {
+      setMarketRefreshError(null);
+      const quotes = await fetchMarketQuotes();
+      await Promise.all(quotes.map(saveMarketQuote));
+      if (active) await refresh();
+    };
+    refreshStaleMarketQuotes().catch((error) => {
+      if (active) setMarketRefreshError(error instanceof Error ? error.message : 'Could not refresh market prices.');
+    });
+    return () => { active = false; };
+  }, [data.investments.length, data.quotes, data.recurringRules, hydrated, refresh]);
+
   const setNotificationEnabled = useCallback((enabled: boolean) => {
     setNotificationEnabledState(enabled);
     localStorage.setItem(NOTIFICATIONS_KEY, String(enabled));
-    if (!enabled) {
-      cancelAllItemNotifications().catch(() => undefined);
-      setData((current) => ({ ...current, items: current.items.map((item) => ({ ...item, notificationId: undefined })) }));
-    }
-  }, []);
+    const syncSchedules = async () => {
+      if (!enabled) await cancelAllItemNotifications();
+      const nextItems = await Promise.all(data.items.map(async (item) => {
+        const next: ThoughtItem = { ...item, notificationId: undefined };
+        if (enabled && (item.category === 'task' || item.category === 'reminder') && item.reminderEnabled !== false && !item.completed) next.notificationId = await scheduleItemNotification(next);
+        await updateThoughtItem(next);
+        return next;
+      }));
+      const byId = new Map(nextItems.map((item) => [item.id, item]));
+      setData((current) => ({ ...current, items: current.items.map((item) => byId.get(item.id) ?? item) }));
+    };
+    syncSchedules().catch(() => undefined);
+  }, [data.items]);
 
   const setRewardsEnabled = useCallback((enabled: boolean) => {
     setRewardsEnabledState(enabled);
@@ -156,6 +194,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
           sourceDumpId: dumpId,
           dateLabel: dateLabelFor(dueAt ?? createdAt),
           time: timeLabelFor(dueAt ?? createdAt),
+          recurrence: dueAt && suggestion.recurrence ? recurrenceForDate(suggestion.recurrence, dueAt) : undefined,
+          reminderEnabled: suggestion.category === 'reminder',
           completed: suggestion.category === 'task' ? false : undefined,
           subtasks: suggestion.subtasks.map((title, subtaskIndex) => ({ id: `${dumpId}-${index}-${subtaskIndex}`, title, completed: false })),
         };
@@ -230,6 +270,50 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     updateItem(id, () => next);
   }, [data.items, notificationEnabled, updateItem]);
 
+  const saveReminder = useCallback(async (existing: ThoughtItem | undefined, input: ReminderInput) => {
+    const title = input.title.trim();
+    const dueDate = new Date(input.dueAt);
+    if (!title) throw new Error('Add a reminder title.');
+    if (Number.isNaN(dueDate.getTime())) throw new Error('Choose a valid reminder date and time.');
+    if (!input.recurrence && dueDate.getTime() <= Date.now()) throw new Error('Choose a future time for a one-time reminder.');
+    const enabled = input.enabled !== false;
+    const item: ThoughtItem = {
+      ...existing,
+      id: existing?.id ?? createId('reminder'),
+      category: 'reminder',
+      title,
+      detail: input.detail?.trim() || undefined,
+      dueAt: dueDate.toISOString(),
+      dateLabel: dateLabelFor(dueDate),
+      time: timeLabelFor(dueDate),
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      completed: false,
+      reminderEnabled: enabled,
+      recurrence: input.recurrence ? recurrenceForDate(input.recurrence, dueDate.toISOString()) : undefined,
+    };
+    await cancelItemNotification(existing?.notificationId);
+    item.notificationId = enabled && notificationEnabled ? await scheduleItemNotification(item) : undefined;
+    await updateThoughtItem(item);
+    await refresh();
+    return item;
+  }, [notificationEnabled, refresh]);
+
+  const addReminder = useCallback((input: ReminderInput) => saveReminder(undefined, input), [saveReminder]);
+  const updateReminder = useCallback(async (id: string, input: ReminderInput) => {
+    const existing = data.items.find((item) => item.id === id && item.category === 'reminder');
+    if (!existing) throw new Error('This reminder no longer exists.');
+    await saveReminder(existing, input);
+  }, [data.items, saveReminder]);
+  const toggleReminderEnabled = useCallback(async (id: string) => {
+    const item = data.items.find((candidate) => candidate.id === id && candidate.category === 'reminder');
+    if (!item) return;
+    await cancelItemNotification(item.notificationId);
+    const next: ThoughtItem = { ...item, reminderEnabled: item.reminderEnabled === false, notificationId: undefined };
+    if (next.reminderEnabled && notificationEnabled) next.notificationId = await scheduleItemNotification(next);
+    await updateThoughtItem(next);
+    await refresh();
+  }, [data.items, notificationEnabled, refresh]);
+
   const addProject = useCallback(async (input: Pick<Project, 'name'> & Partial<Pick<Project, 'summary' | 'nextAction'>>) => {
     const now = new Date().toISOString();
     const project: Project = { id: createId('project'), name: input.name.trim(), summary: input.summary?.trim(), status: 'active', nextAction: input.nextAction?.trim(), createdAt: now, updatedAt: now };
@@ -278,31 +362,37 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   }, [refresh]);
 
   const refreshMarketQuotes = useCallback(async () => {
-    const quotes = await fetchMarketQuotes();
-    await Promise.all(quotes.map(saveMarketQuote));
-    await refresh();
+    setMarketRefreshError(null);
+    try {
+      const quotes = await fetchMarketQuotes();
+      await Promise.all(quotes.map(saveMarketQuote));
+      await refresh();
+    } catch (error) {
+      setMarketRefreshError(error instanceof Error ? error.message : 'Could not refresh market prices.');
+      throw error;
+    }
   }, [refresh]);
 
-  const addRecurringRule = useCallback(async (input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => {
+  const addRecurringRule = useCallback(async (input: RecurringRuleInput) => {
     const days = normalizeMonthlyDays(input.days);
     if (!input.title.trim() || !input.category.trim()) throw new Error('Add a title and category.');
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid recurring amount.');
     if (!days.length || days.length !== input.days.length) throw new Error('Use unique calendar days from 1 to 31.');
-    if (input.kind === 'investment' && (!input.asset || unitPriceMinorFromTotal(input.quantity ?? '', input.amountMinor) == null)) throw new Error('Investments require an asset and an actual quantity with up to 8 decimal places.');
+    if (input.kind === 'investment' && !input.asset) throw new Error('Choose BTC or VOO for this investment automation.');
     const now = new Date().toISOString();
-    const rule: RecurringRule = { id: createId('recurring'), kind: input.kind, title: input.title.trim(), category: input.category.trim(), amountMinor: input.amountMinor, days, asset: input.kind === 'investment' ? input.asset : undefined, quantity: input.kind === 'investment' ? input.quantity : undefined, active: true, startsOn: input.startsOn ?? localDateKey(new Date()), createdAt: now, updatedAt: now };
+    const rule: RecurringRule = { id: createId('recurring'), kind: input.kind, title: input.title.trim(), category: input.category.trim(), amountMinor: input.amountMinor, days, asset: input.kind === 'investment' ? input.asset : undefined, active: true, startsOn: input.startsOn ?? localDateKey(new Date()), createdAt: now, updatedAt: now };
     await saveRecurringRule(rule);
     await refresh();
   }, [refresh]);
 
-  const updateRecurringRule = useCallback(async (id: string, input: { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; quantity?: string; startsOn?: string }) => {
+  const updateRecurringRule = useCallback(async (id: string, input: RecurringRuleInput) => {
     const existing = data.recurringRules.find((candidate) => candidate.id === id);
     if (!existing) throw new Error('This automation no longer exists.');
     const days = normalizeMonthlyDays(input.days);
     if (!input.title.trim() || !input.category.trim()) throw new Error('Add a title and category.');
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid recurring amount.');
     if (!days.length || days.length !== input.days.length) throw new Error('Use unique calendar days from 1 to 31.');
-    if (input.kind === 'investment' && (!input.asset || unitPriceMinorFromTotal(input.quantity ?? '', input.amountMinor) == null)) throw new Error('Investments require an asset and an actual quantity with up to 8 decimal places.');
+    if (input.kind === 'investment' && !input.asset) throw new Error('Choose BTC or VOO for this investment automation.');
     await saveRecurringRule({
       ...existing,
       kind: input.kind,
@@ -311,7 +401,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
       amountMinor: input.amountMinor,
       days,
       asset: input.kind === 'investment' ? input.asset : undefined,
-      quantity: input.kind === 'investment' ? input.quantity : undefined,
+      quantity: undefined,
       startsOn: input.startsOn ?? existing.startsOn,
       updatedAt: new Date().toISOString(),
     });
@@ -342,23 +432,30 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const deleteBudget = useCallback(async (id: string) => { await removeMonthlyBudget(id); await refresh(); }, [refresh]);
 
+  const setWalletSetup = useCallback(async (setup: WalletSetup) => {
+    if (!Number.isSafeInteger(setup.openingBalanceMinor) || setup.openingBalanceMinor < 0) throw new Error('Enter a valid starting wallet amount.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(setup.startsOn) || localDateKey(new Date(localNoonIso(setup.startsOn))) !== setup.startsOn) throw new Error('Use a valid tracking date in YYYY-MM-DD format.');
+    await saveWalletSetup(setup);
+    await refresh();
+  }, [refresh]);
+
   const totalXp = useMemo(() => data.activity.reduce((sum, event) => sum + event.xp, 0), [data.activity]);
   const level = Math.floor(totalXp / 50) + 1;
 
   const value = useMemo<ItemsContextValue>(() => ({
-    ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, notificationEnabled, rewardsEnabled, totalXp, level,
+    ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, marketRefreshError, notificationEnabled, rewardsEnabled, totalXp, level,
     setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, setRewardsEnabled, confirmOrganizedDump,
     toggleComplete: (id) => updateItem(id, (item) => ({ ...item, completed: !item.completed }), true),
     toggleFavorite: (id) => updateItem(id, (item) => ({ ...item, favorite: !item.favorite })),
     deleteItem, deleteDump,
     changeCategory: (id, category) => updateItem(id, (item) => ({ ...item, category, completed: category === 'task' ? item.completed ?? false : undefined })),
     updateTitle: (id, title) => updateItem(id, (item) => ({ ...item, title })),
-    scheduleTomorrow,
+    scheduleTomorrow, addReminder, updateReminder, toggleReminderEnabled,
     addSubtask: (id, title) => updateItem(id, (item) => ({ ...item, subtasks: [...(item.subtasks ?? []), { id: createId('subtask'), title, completed: false }] })),
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
     addProject, addProjectHandoff, addTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
-    addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, saveBudget, deleteBudget, exportData: exportAppData,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addTransaction, confirmOrganizedDump, data, deleteBudget, deleteDump, deleteItem, deleteRecurringRule, deleteTransaction, hydrated, latestItemIds, level, notificationEnabled, pendingOrganizedDump, pendingRecording, processingError, refreshMarketQuotes, rewardsEnabled, saveBudget, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, toggleRecurringRule, totalXp, updateItem, updateQuote, updateRecurringRule]);
+    addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, saveBudget, deleteBudget, setWalletSetup, exportData: exportAppData,
+  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, data, deleteBudget, deleteDump, deleteItem, deleteRecurringRule, deleteTransaction, hydrated, latestItemIds, level, marketRefreshError, notificationEnabled, pendingOrganizedDump, pendingRecording, processingError, refreshMarketQuotes, rewardsEnabled, saveBudget, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, toggleRecurringRule, toggleReminderEnabled, totalXp, updateItem, updateQuote, updateRecurringRule, updateReminder]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

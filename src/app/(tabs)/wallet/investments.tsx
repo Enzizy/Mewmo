@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { InvestmentMark } from '@/components/InvestmentMark';
 import { PageHeader } from '@/components/page-header';
@@ -15,6 +16,7 @@ import { DisplayCurrency, formatMoney } from '@/utils/money';
 type FormKind = 'investment' | 'quote' | null;
 
 export default function InvestmentsScreen() {
+  const { showDialog } = useAppDialog();
   const params = useLocalSearchParams<{ action?: string }>();
   const data = useItems();
   const summary = getWalletSummary(data);
@@ -28,12 +30,12 @@ export default function InvestmentsScreen() {
   const refresh = async () => {
     setRefreshing(true);
     try { await data.refreshMarketQuotes(); }
-    catch (error) { Alert.alert('Could not refresh prices', error instanceof Error ? error.message : 'Try again.'); }
+    catch (error) { showDialog({ title: 'Could not refresh prices', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' }); }
     finally { setRefreshing(false); }
   };
 
   const chooseCurrency = (next: DisplayCurrency) => {
-    if (next === 'USD' && !summary.usdPhp) return Alert.alert('USD rate unavailable', 'Refresh live prices first. The saved USD/PHP rate will enable this view.');
+    if (next === 'USD' && !summary.usdPhp) return showDialog({ title: 'USD rate unavailable', message: 'Refresh live prices first. The saved USD/PHP rate will enable this view.', tone: 'warning' });
     setCurrency(next);
   };
 
@@ -46,6 +48,7 @@ export default function InvestmentsScreen() {
         <View accessibilityRole="tablist" style={styles.currencyToggle}>{(['PHP', 'USD'] as const).map((value) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: currency === value, disabled: value === 'USD' && !summary.usdPhp }} key={value} onPress={() => chooseCurrency(value)} style={[styles.currencyOption, currency === value && styles.currencyActive, value === 'USD' && !summary.usdPhp && styles.currencyDisabled]}><Text style={[styles.currencyText, currency === value && styles.currencyTextActive]}>{value}</Text></Pressable>)}</View>
         <Pressable accessibilityRole="button" disabled={refreshing} onPress={refresh} style={({ pressed }) => [styles.refreshButton, pressed && styles.pressed, refreshing && styles.disabled]}><Feather name="refresh-cw" size={15} color={colors.ink} /><Text style={styles.refreshText}>{refreshing ? 'Refreshing…' : 'Refresh prices'}</Text></Pressable>
       </View>
+      {data.marketRefreshError ? <View accessibilityRole="alert" style={styles.priceError}><Feather name="alert-circle" size={15} color={colors.danger} /><Text style={styles.priceErrorText}>Live prices could not update. {data.marketRefreshError} Tap Refresh prices to retry.</Text></View> : null}
 
       {form === 'investment' ? <InvestmentForm onDone={() => setForm(null)} onCancel={() => setForm(null)} /> : null}
       {form === 'quote' ? <QuoteForm onDone={() => setForm(null)} onCancel={() => setForm(null)} /> : null}
@@ -73,6 +76,8 @@ const styles = StyleSheet.create({
   currencyTextActive: { color: colors.ink },
   refreshButton: { minHeight: 44, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   refreshText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.ink },
+  priceError: { marginTop: 12, padding: 11, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },
+  priceErrorText: { flex: 1, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.danger },
   total: { marginTop: 24, padding: 20, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   totalLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary },
   totalValue: { marginTop: 7, fontFamily: fonts.bodyBold, fontSize: 30, letterSpacing: -0.8, fontVariant: ['tabular-nums'], color: colors.ink },

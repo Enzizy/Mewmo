@@ -28,6 +28,14 @@ test('falls back to a note when no valid items are returned', () => {
   assert.equal(result.items[0].category, 'note');
 });
 
+test('preserves an explicit recurring reminder', () => {
+  const result = validateOrganizedDump({
+    title: 'Payday', transcript: 'Remind me every 15th that it is payday.',
+    items: [{ category: 'reminder', title: 'Payday', detail: null, dueAt: '2026-09-15T09:00:00+08:00', recurrence: 'monthly', subtasks: [] }],
+  });
+  assert.equal(result.items[0].recurrence, 'monthly');
+});
+
 test('rejects a missing transcript', () => {
   assert.throws(() => validateOrganizedDump({ title: 'No transcript', items: [] }), /transcript/);
 });

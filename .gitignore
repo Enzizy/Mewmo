@@ -45,3 +45,5 @@ yarn-error.*
 .playwright-cli/
 .codex-export-*/
 output/playwright/
+
+.vercel

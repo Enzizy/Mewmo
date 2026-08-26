@@ -14,6 +14,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/instrument-sans';
 import { ItemsProvider } from '@/store/ItemsContext';
+import { AppDialogProvider } from '@/components/AppDialog';
 import { colors } from '@/constants/theme';
 import { configureNotifications, subscribeToNotificationResponses } from '@/services/notifications';
 
@@ -44,15 +45,17 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <ItemsProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
-            <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-            <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
-            <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
-            <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
-            <Stack.Screen name="results" options={{ animation: 'fade' }} />
-            <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
-          </Stack>
+          <AppDialogProvider>
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
+              <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+              <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
+              <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
+              <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
+              <Stack.Screen name="results" options={{ animation: 'fade' }} />
+              <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
+            </Stack>
+          </AppDialogProvider>
         </ItemsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

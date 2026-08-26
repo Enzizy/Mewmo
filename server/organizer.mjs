@@ -37,6 +37,7 @@ export const responseSchema = {
           title: { type: 'string' },
           detail: { type: ['string', 'null'] },
           dueAt: { type: ['string', 'null'], description: 'ISO 8601 timestamp with timezone offset, or null.' },
+          recurrence: { type: ['string', 'null'], enum: ['daily', 'weekly', 'monthly', 'yearly', null], description: 'How an explicit repeating reminder recurs, or null.' },
           subtasks: { type: 'array', items: { type: 'string' } },
           projectName: { type: ['string', 'null'] },
           amountMinor: { type: ['integer', 'null'], description: 'Exact Philippine peso amount in centavos, or null. ₱2,000.00 is 200000.' },
@@ -44,7 +45,7 @@ export const responseSchema = {
           quantity: { type: ['string', 'null'], description: 'Exact decimal asset quantity as spoken, or null.' },
           unitPriceMinor: { type: ['integer', 'null'], description: 'Per-unit Philippine peso price in centavos, or null.' },
         },
-        required: ['category', 'title', 'detail', 'dueAt', 'subtasks', 'projectName', 'amountMinor', 'asset', 'quantity', 'unitPriceMinor'],
+        required: ['category', 'title', 'detail', 'dueAt', 'recurrence', 'subtasks', 'projectName', 'amountMinor', 'asset', 'quantity', 'unitPriceMinor'],
       },
     },
   },
@@ -72,7 +73,7 @@ Classification rules:
 
 Never infer a money amount, asset quantity, price, or transaction that the speaker did not state. Investment intentions without a completed purchase are tasks or notes, not investment records. Only BTC and VOO are supported investment assets. Use projectName when the speaker identifies a project.
 
-Resolve relative dates such as “tomorrow” using the supplied local datetime and timezone. Use an ISO 8601 timestamp with an explicit timezone offset for dueAt. If no date or time is stated, use null. Keep titles concise and place supporting context in detail. Use subtasks only when the speaker clearly gives component steps or a checklist. If there is meaningful speech but nothing fits another category, create a note.`;
+Resolve relative dates such as “tomorrow” using the supplied local datetime and timezone. Use an ISO 8601 timestamp with an explicit timezone offset for dueAt. For explicit repeating reminders, set recurrence to daily, weekly, monthly, or yearly and set dueAt to the next occurrence. If the speaker gives a recurring day but no time, use 09:00 local time. Never add recurrence unless the speaker explicitly asks for repetition. If no date or time is stated, use null. Keep titles concise and place supporting context in detail. Use subtasks only when the speaker clearly gives component steps or a checklist. If there is meaningful speech but nothing fits another category, create a note.`;
 }
 
 export function validateOrganizedDump(value) {
@@ -92,6 +93,7 @@ export function validateOrganizedDump(value) {
       title: itemTitle.slice(0, 180),
       detail: typeof item.detail === 'string' && item.detail.trim() ? item.detail.trim().slice(0, 4000) : null,
       dueAt,
+      recurrence: ['daily', 'weekly', 'monthly', 'yearly'].includes(item.recurrence) ? item.recurrence : null,
       subtasks: Array.isArray(item.subtasks) ? item.subtasks.map((entry) => cleanString(entry, '')).filter(Boolean).slice(0, 30) : [],
       projectName: nullableString(item.projectName, 180),
       amountMinor: safeNonNegativeInteger(item.amountMinor),
@@ -101,7 +103,7 @@ export function validateOrganizedDump(value) {
     }];
   });
 
-  if (!items.length) items.push({ category: 'note', title, detail: transcript.slice(0, 4000), dueAt: null, subtasks: [], projectName: null, amountMinor: null, asset: null, quantity: null, unitPriceMinor: null });
+  if (!items.length) items.push({ category: 'note', title, detail: transcript.slice(0, 4000), dueAt: null, recurrence: null, subtasks: [], projectName: null, amountMinor: null, asset: null, quantity: null, unitPriceMinor: null });
   return { title, transcript, items };
 }
 

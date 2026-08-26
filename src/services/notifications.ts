@@ -56,11 +56,16 @@ export async function scheduleItemNotification(item: ThoughtItem) {
   const notifications = await getNotifications();
   if (!notifications) return undefined;
   const date = new Date(item.dueAt);
-  if (Number.isNaN(date.getTime()) || date.getTime() <= Date.now()) return undefined;
+  if (Number.isNaN(date.getTime()) || (!item.recurrence && date.getTime() <= Date.now())) return undefined;
   const existing = await notifications.getPermissionsAsync();
   const permission = existing.granted ? existing : await notifications.requestPermissionsAsync();
   if (!permission.granted) return undefined;
 
+  const trigger = item.recurrence ? recurrenceTrigger(notifications, item.recurrence) : {
+    type: notifications.SchedulableTriggerInputTypes.DATE,
+    date,
+    channelId,
+  };
   return notifications.scheduleNotificationAsync({
     content: {
       title: item.category === 'reminder' ? 'Reminder' : 'A thought needs your attention',
@@ -68,12 +73,16 @@ export async function scheduleItemNotification(item: ThoughtItem) {
       data: { itemId: item.id },
       sound: true,
     },
-    trigger: {
-      type: notifications.SchedulableTriggerInputTypes.DATE,
-      date,
-      channelId,
-    },
+    trigger,
   });
+}
+
+function recurrenceTrigger(notifications: NotificationsModule, recurrence: NonNullable<ThoughtItem['recurrence']>) {
+  const shared = { channelId, hour: recurrence.hour, minute: recurrence.minute };
+  if (recurrence.frequency === 'daily') return { type: notifications.SchedulableTriggerInputTypes.DAILY, ...shared };
+  if (recurrence.frequency === 'weekly') return { type: notifications.SchedulableTriggerInputTypes.WEEKLY, ...shared, weekday: recurrence.weekday ?? 1 };
+  if (recurrence.frequency === 'monthly') return { type: notifications.SchedulableTriggerInputTypes.MONTHLY, ...shared, day: recurrence.day ?? 1 };
+  return { type: notifications.SchedulableTriggerInputTypes.YEARLY, ...shared, month: recurrence.month ?? 0, day: recurrence.day ?? 1 };
 }
 
 export async function cancelItemNotification(identifier?: string) {

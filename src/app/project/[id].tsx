@@ -1,6 +1,7 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -8,9 +9,10 @@ import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 
 export default function ProjectDetailScreen() {
+  const { showDialog } = useAppDialog();
   const { id } = useLocalSearchParams<{ id: string }>(); const { projects, projectSessions, addProjectHandoff } = useItems(); const project = projects.find((item) => item.id === id); const sessions = projectSessions.filter((item) => item.projectId === id); const [note, setNote] = useState(''); const [nextAction, setNextAction] = useState(project?.nextAction ?? ''); const [saving, setSaving] = useState(false);
   if (!project) return <AppScreen><ScreenHeader back /><Text style={styles.missing}>Project not found.</Text></AppScreen>;
-  const save = async () => { if (!note.trim()) return Alert.alert('Add a handoff note', 'Write what changed or where you stopped.'); setSaving(true); try { await addProjectHandoff(project.id, note, nextAction); setNote(''); } finally { setSaving(false); } };
+  const save = async () => { if (!note.trim()) return showDialog({ title: 'Add a handoff note', message: 'Write what changed or where you stopped.', tone: 'warning' }); setSaving(true); try { await addProjectHandoff(project.id, note, nextAction); setNote(''); } finally { setSaving(false); } };
   return <AppScreen background={colors.paper}><ScreenHeader back /><View style={styles.hero}><View style={styles.copy}><Text style={styles.kicker}>RESUME WORK</Text><Text style={styles.title}>{project.name}</Text></View><PixelCat pose="sorting" size={82} speech="WELCOME BACK" /></View><View style={styles.resume}><Text style={styles.label}>CURRENT FOCUS</Text><Text style={styles.value}>{project.currentFocus || 'No handoff note saved yet.'}</Text><Text style={styles.label}>NEXT ACTION</Text><Text style={styles.next}>{project.nextAction || 'Choose the smallest useful next step.'}</Text></View><View style={styles.form}><Text style={styles.sectionTitle}>SAVE WHERE YOU STOPPED</Text><TextInput value={note} onChangeText={setNote} multiline placeholder="What changed? Where did you stop?" placeholderTextColor={colors.muted} style={[styles.input, styles.notes]} /><TextInput value={nextAction} onChangeText={setNextAction} placeholder="What should happen next?" placeholderTextColor={colors.muted} style={styles.input} /><Pressable disabled={saving} onPress={save} style={styles.button}><Text style={styles.buttonText}>{saving ? 'SAVING...' : 'SAVE HANDOFF + 8 XP'}</Text></Pressable></View><Text style={styles.sectionTitle}>SESSION HISTORY</Text><View style={styles.history}>{sessions.map((session) => <View key={session.id} style={styles.session}><Text style={styles.sessionDate}>{new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(session.createdAt))}</Text><Text style={styles.sessionNote}>{session.note}</Text>{session.nextAction ? <Text style={styles.sessionNext}>NEXT: {session.nextAction}</Text> : null}</View>)}{!sessions.length ? <Text style={styles.empty}>Your saved handoffs will appear here.</Text> : null}</View></AppScreen>;
 }
 

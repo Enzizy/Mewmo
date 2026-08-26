@@ -1,5 +1,15 @@
 export type Category = 'task' | 'reminder' | 'idea' | 'note';
 export type SuggestionKind = Category | 'project' | 'income' | 'expense' | 'investment';
+export type ReminderFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
+export type ReminderRecurrence = {
+  frequency: ReminderFrequency;
+  hour: number;
+  minute: number;
+  weekday?: number;
+  day?: number;
+  month?: number;
+};
 
 export type ThoughtItem = {
   id: string;
@@ -12,6 +22,8 @@ export type ThoughtItem = {
   createdAt?: string;
   sourceDumpId?: string;
   notificationId?: string;
+  reminderEnabled?: boolean;
+  recurrence?: ReminderRecurrence;
   completed?: boolean;
   favorite?: boolean;
   subtasks?: { id: string; title: string; completed: boolean }[];
@@ -37,6 +49,7 @@ export type OrganizedItemInput = {
   title: string;
   detail: string | null;
   dueAt: string | null;
+  recurrence?: ReminderFrequency | null;
   subtasks: string[];
   projectName?: string | null;
   amountMinor?: number | null;
@@ -119,6 +132,7 @@ export type RecurringRule = {
   amountMinor: number;
   days: number[];
   asset?: InvestmentAsset;
+  /** Retained only for backward-compatible loading of older recurring rules. */
   quantity?: string;
   active: boolean;
   startsOn: string;
@@ -133,6 +147,11 @@ export type MonthlyBudget = {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type WalletSetup = {
+  openingBalanceMinor: number;
+  startsOn: string;
 };
 
 export type ActivityKind = 'dump_confirmed' | 'item_completed' | 'project_handoff' | 'weekly_review';
@@ -156,5 +175,6 @@ export type AppDataSnapshot = {
   quotes: MarketQuote[];
   recurringRules: RecurringRule[];
   budgets: MonthlyBudget[];
+  walletSetup?: WalletSetup;
   activity: ActivityEvent[];
 };

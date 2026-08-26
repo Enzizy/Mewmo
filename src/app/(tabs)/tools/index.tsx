@@ -9,9 +9,11 @@ import { colors, fonts } from '@/constants/theme';
 
 const tools = [
   { id: 'image-tools', title: 'Image Tools', description: 'Convert, compress, and resize images.', icon: 'image' as const, route: '/tools/image-tools' as const, availability: 'Runs on your device', badgeIcon: 'smartphone' as const },
+  { id: 'pdf-tools', title: 'PDF & Document Tools', description: 'Create, merge, extract, and reorder PDF pages.', icon: 'file-text' as const, route: '/tools/pdf-tools' as const, availability: 'Private on-device processing', badgeIcon: 'lock' as const },
+  { id: 'weather', title: 'Weather Forecast', description: 'Current conditions and a seven-day outlook for your saved city.', icon: 'cloud' as const, route: '/tools/weather' as const, availability: 'Free live forecast · cached offline', badgeIcon: 'wifi' as const },
   { id: 'currency-converter', title: 'Currency Converter', description: 'Compare amounts across currencies with clear rate details.', icon: 'dollar-sign' as const, route: '/tools/currency-converter' as const, availability: 'Live Twelve Data rates', badgeIcon: 'wifi' as const },
   { id: 'unit-converter', title: 'Unit Converter', description: 'Convert everyday measurements without leaving the app.', icon: 'sliders' as const, route: '/tools/unit-converter' as const, availability: 'Instant offline calculations', badgeIcon: 'smartphone' as const },
-  { id: 'translator', title: 'Translator', description: 'Translate text with a focused, distraction-free workspace.', icon: 'message-circle' as const, route: '/tools/translator' as const, availability: 'Gemini translation', badgeIcon: 'zap' as const },
+  { id: 'ar-measure', title: 'AR Measure', description: 'Pin two camera points for an approximate real-world length.', icon: 'maximize-2' as const, route: '/tools/ar-measure' as const, availability: 'Android · runs on your device', badgeIcon: 'camera' as const },
 ];
 
 export default function ToolsScreen() {

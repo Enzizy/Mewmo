@@ -13,14 +13,17 @@ import {
   RecurringRule,
   ThoughtItem,
   VoiceDump,
+  WalletSetup,
 } from '@/types';
-import { unitPriceMinorFromTotal } from '@/utils/money';
+import { investmentPurchaseFromBudget } from '@/utils/market';
 import { localDateKey, localNoonIso, scheduledDatesThrough } from '@/utils/recurrence';
 
 const DATABASE_NAME = 'brain-dump.db';
 const LEGACY_ITEMS_KEY = '@gather/items-v2';
 const LEGACY_DUMPS_KEY = '@gather/dumps-v2';
 const LEGACY_IMPORT_KEY = 'legacy_import_v2';
+const WALLET_OPENING_BALANCE_KEY = 'wallet_opening_balance_minor';
+const WALLET_TRACKING_START_KEY = 'wallet_tracking_starts_on';
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | undefined;
 
@@ -188,6 +191,14 @@ async function openAndMigrate() {
     `);
   }
 
+  if (version < 4) {
+    await db.execAsync(`
+      ALTER TABLE thought_items ADD COLUMN recurrence_json TEXT;
+      ALTER TABLE thought_items ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1;
+      PRAGMA user_version = 4;
+    `);
+  }
+
   await migrateLegacyStorage(db);
   return db;
 }
@@ -220,7 +231,7 @@ function safeArray<T>(value?: string | null): T[] {
 export async function loadAppData(): Promise<AppDataSnapshot> {
   const db = await initializeDatabase();
   await postDueRecurringRules(db);
-  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, budgets, activity] = await Promise.all([
+  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, budgets, activity, walletSettings] = await Promise.all([
     db.getAllAsync<ThoughtItemRow>('SELECT * FROM thought_items ORDER BY created_at DESC'),
     db.getAllAsync<VoiceDumpRow>('SELECT * FROM voice_dumps ORDER BY created_at DESC'),
     db.getAllAsync<ProjectRow>('SELECT * FROM projects ORDER BY updated_at DESC'),
@@ -231,7 +242,15 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     db.getAllAsync<RecurringRuleRow>('SELECT * FROM recurring_rules ORDER BY active DESC, updated_at DESC'),
     db.getAllAsync<MonthlyBudgetRow>('SELECT * FROM monthly_budgets ORDER BY active DESC, category COLLATE NOCASE'),
     db.getAllAsync<ActivityEventRow>('SELECT * FROM activity_events ORDER BY created_at DESC'),
+    db.getAllAsync<SettingRow>('SELECT key, value FROM settings WHERE key IN (?, ?)', WALLET_OPENING_BALANCE_KEY, WALLET_TRACKING_START_KEY),
   ]);
+
+  const openingBalanceValue = walletSettings.find((row) => row.key === WALLET_OPENING_BALANCE_KEY)?.value;
+  const startsOn = walletSettings.find((row) => row.key === WALLET_TRACKING_START_KEY)?.value;
+  const openingBalanceMinor = openingBalanceValue == null ? null : Number(openingBalanceValue);
+  const walletSetup = startsOn && Number.isSafeInteger(openingBalanceMinor) && openingBalanceMinor! >= 0
+    ? { openingBalanceMinor: openingBalanceMinor!, startsOn }
+    : undefined;
 
   return {
     items: itemRows.map(fromThoughtItemRow),
@@ -243,8 +262,17 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     quotes,
     recurringRules: recurringRules.map((row) => ({ id: row.id, kind: row.kind as RecurringRule['kind'], title: row.title, category: row.category, amountMinor: row.amount_minor, days: safeArray<number>(row.days_json), asset: (row.asset as RecurringRule['asset']) ?? undefined, quantity: row.quantity ?? undefined, active: Boolean(row.active), startsOn: row.starts_on, createdAt: row.created_at, updatedAt: row.updated_at })),
     budgets: budgets.map((row) => ({ id: row.id, category: row.category, limitMinor: row.limit_minor, active: Boolean(row.active), createdAt: row.created_at, updatedAt: row.updated_at })),
+    walletSetup,
     activity: activity.map((row) => ({ id: row.id, kind: row.kind as ActivityEvent['kind'], title: row.title, xp: row.xp, createdAt: row.created_at, sourceId: row.source_id ?? undefined })),
   };
+}
+
+export async function saveWalletSetup(setup: WalletSetup) {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', WALLET_OPENING_BALANCE_KEY, String(setup.openingBalanceMinor));
+    await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', WALLET_TRACKING_START_KEY, setup.startsOn);
+  });
 }
 
 export async function saveConfirmedBundle(bundle: {
@@ -368,9 +396,9 @@ export async function exportAppData() {
 
 async function insertThoughtItem(executor: SqlExecutor, item: ThoughtItem) {
   await executor.runAsync(`INSERT OR REPLACE INTO thought_items
-    (id, category, title, date_label, time_label, detail, due_at, created_at, source_dump_id, notification_id, completed, favorite, subtasks_json)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  item.id, item.category, item.title, item.dateLabel, item.time ?? null, item.detail ?? null, item.dueAt ?? null, item.createdAt ?? new Date().toISOString(), item.sourceDumpId ?? null, item.notificationId ?? null, item.completed == null ? null : Number(item.completed), Number(Boolean(item.favorite)), JSON.stringify(item.subtasks ?? []));
+    (id, category, title, date_label, time_label, detail, due_at, created_at, source_dump_id, notification_id, completed, favorite, subtasks_json, recurrence_json, reminder_enabled)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  item.id, item.category, item.title, item.dateLabel, item.time ?? null, item.detail ?? null, item.dueAt ?? null, item.createdAt ?? new Date().toISOString(), item.sourceDumpId ?? null, item.notificationId ?? null, item.completed == null ? null : Number(item.completed), Number(Boolean(item.favorite)), JSON.stringify(item.subtasks ?? []), item.recurrence ? JSON.stringify(item.recurrence) : null, Number(item.reminderEnabled !== false));
 }
 
 async function insertVoiceDump(executor: SqlExecutor, dump: VoiceDump) {
@@ -409,7 +437,7 @@ async function withWriteTransaction(db: SQLite.SQLiteDatabase, task: (txn: SQLit
   await db.withExclusiveTransactionAsync(task);
 }
 
-type ThoughtItemRow = { id: string; category: string; title: string; date_label: string; time_label: string | null; detail: string | null; due_at: string | null; created_at: string; source_dump_id: string | null; notification_id: string | null; completed: number | null; favorite: number; subtasks_json: string };
+type ThoughtItemRow = { id: string; category: string; title: string; date_label: string; time_label: string | null; detail: string | null; due_at: string | null; created_at: string; source_dump_id: string | null; notification_id: string | null; completed: number | null; favorite: number; subtasks_json: string; recurrence_json: string | null; reminder_enabled: number };
 type VoiceDumpRow = { id: string; title: string; created_at: string; duration_seconds: number; uri: string; transcript: string };
 type ProjectRow = { id: string; name: string; summary: string | null; status: string; current_focus: string | null; next_action: string | null; created_at: string; updated_at: string; source_dump_id: string | null };
 type ProjectSessionRow = { id: string; project_id: string; note: string; next_action: string | null; created_at: string };
@@ -418,6 +446,7 @@ type InvestmentTransactionRow = { id: string; asset: string; quantity: string; u
 type ActivityEventRow = { id: string; kind: string; title: string; xp: number; created_at: string; source_id: string | null };
 type RecurringRuleRow = { id: string; kind: string; title: string; category: string; amount_minor: number; days_json: string; asset: string | null; quantity: string | null; active: number; starts_on: string; created_at: string; updated_at: string };
 type MonthlyBudgetRow = { id: string; category: string; limit_minor: number; active: number; created_at: string; updated_at: string };
+type SettingRow = { key: string; value: string };
 
 async function postDueRecurringRules(db: SQLite.SQLiteDatabase) {
   const rules = await db.getAllAsync<RecurringRuleRow>('SELECT * FROM recurring_rules WHERE active = 1');
@@ -433,14 +462,19 @@ async function postDueRecurringRules(db: SQLite.SQLiteDatabase) {
       const investmentId = row.kind === 'investment' ? `investment-${row.id}-${scheduledDate}` : null;
 
       if (row.kind === 'investment') {
-        const unitPriceMinor = unitPriceMinorFromTotal(row.quantity ?? '', row.amount_minor);
-        if (!row.asset || unitPriceMinor == null) continue;
+        if (!row.asset) continue;
+        const quote = await db.getFirstAsync<{ priceMinor: number; asOf: string }>(
+          'SELECT price_minor AS priceMinor, as_of AS asOf FROM market_quotes WHERE asset = ?',
+          row.asset,
+        );
+        const purchase = investmentPurchaseFromBudget(row.amount_minor, quote);
+        if (!purchase) continue;
         await db.runAsync(`INSERT OR IGNORE INTO financial_transactions
           (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
           VALUES (?, 'investment', ?, ?, ?, ?, NULL, ?)`, transactionId, row.title, row.category, row.amount_minor, occurredAt, investmentId);
         await db.runAsync(`INSERT OR IGNORE INTO investment_transactions
           (id, asset, quantity, unit_price_minor, amount_minor, fees_minor, occurred_at, source_dump_id, cash_transaction_id)
-          VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?)`, investmentId, row.asset, row.quantity, unitPriceMinor, row.amount_minor, occurredAt, transactionId);
+          VALUES (?, ?, ?, ?, ?, 0, ?, NULL, ?)`, investmentId, row.asset, purchase.quantity, purchase.unitPriceMinor, row.amount_minor, occurredAt, transactionId);
       } else {
         await db.runAsync(`INSERT OR IGNORE INTO financial_transactions
           (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
@@ -463,8 +497,19 @@ function fromThoughtItemRow(row: ThoughtItemRow): ThoughtItem {
     createdAt: row.created_at,
     sourceDumpId: row.source_dump_id ?? undefined,
     notificationId: row.notification_id ?? undefined,
+    reminderEnabled: Boolean(row.reminder_enabled),
+    recurrence: row.recurrence_json ? safeObject<NonNullable<ThoughtItem['recurrence']>>(row.recurrence_json) : undefined,
     completed: row.completed == null ? undefined : Boolean(row.completed),
     favorite: Boolean(row.favorite),
     subtasks: safeArray<NonNullable<ThoughtItem['subtasks']>[number]>(row.subtasks_json),
   };
+}
+
+function safeObject<T>(value: string): T | undefined {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as T : undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -3,6 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
+import { useAppDialog } from '@/components/AppDialog';
 import { categoryMeta } from '@/components/CategoryIcon';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, fonts } from '@/constants/theme';
@@ -10,6 +11,7 @@ import { useItems } from '@/store/ItemsContext';
 import { confirmAction } from '@/utils/confirm-action';
 
 export default function ItemDetailScreen() {
+  const { showDialog } = useAppDialog();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { items, toggleComplete, deleteItem, updateTitle, scheduleTomorrow, addSubtask, toggleSubtask } = useItems();
@@ -22,7 +24,7 @@ export default function ItemDetailScreen() {
   const meta = categoryMeta[item.category];
   const saveTitle = () => { if (draftTitle.trim()) updateTitle(item.id, draftTitle.trim()); setEditing(false); };
   const add = () => { if (!newSubtask.trim()) return; addSubtask(item.id, newSubtask.trim()); setNewSubtask(''); };
-  const remove = () => confirmAction({ title: 'Delete item?', message: 'This removes the item from your collection.', confirmLabel: 'Delete', onConfirm: () => { deleteItem(item.id); router.canGoBack() ? router.back() : router.replace('/'); } });
+  const remove = () => showDialog(confirmAction({ title: 'Delete item?', message: 'This removes the item from your collection.', confirmLabel: 'Delete', onConfirm: () => { deleteItem(item.id); router.canGoBack() ? router.back() : router.replace('/'); } }));
 
   return (
     <AppScreen background={colors.paper}>

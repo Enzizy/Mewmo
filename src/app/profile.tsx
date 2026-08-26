@@ -2,7 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -13,6 +14,7 @@ import { checkOrganizerHealth, getOrganizerApiUrl } from '@/services/organizerAp
 import { useItems } from '@/store/ItemsContext';
 
 export default function ProfileScreen() {
+  const { showDialog } = useAppDialog();
   const [aiStatus, setAiStatus] = useState('Checking...');
   const notificationRuntimeAvailable = isNotificationRuntimeAvailable();
   const { items, dumps, projects, transactions, notificationEnabled, rewardsEnabled, level, totalXp, setNotificationEnabled, setRewardsEnabled, exportData } = useItems();
@@ -25,9 +27,9 @@ export default function ProfileScreen() {
       const path = `${FileSystem.documentDirectory}mewmo-export-${new Date().toISOString().slice(0, 10)}.json`;
       await FileSystem.writeAsStringAsync(path, contents);
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: 'Export Mewmo data' });
-      else Alert.alert('Export saved', path);
+      else showDialog({ title: 'Export saved', message: path, tone: 'success' });
     } catch (error) {
-      Alert.alert('Export failed', error instanceof Error ? error.message : 'Your data could not be exported.');
+      showDialog({ title: 'Export failed', message: error instanceof Error ? error.message : 'Your data could not be exported.', tone: 'danger' });
     }
   };
 
@@ -51,7 +53,7 @@ export default function ProfileScreen() {
         <Action icon="cpu" label="Gemini connection" detail={aiStatus} onPress={checkAi} />
         <Action icon="download" label="Export all data" detail="Portable JSON backup" onPress={shareExport} />
         <Setting icon="hard-drive" label="Local storage" detail={`${dumps.length} recordings · ${items.length} items · ${projects.length} projects · ${transactions.length} money records`} />
-        <Action icon="shield" label="Privacy" detail="Audio is sent only when you process it" onPress={() => Alert.alert('Privacy', 'Your records are stored locally in SQLite. Voice audio is sent to your configured Gemini backend only for processing. Financial suggestions require your review before they are saved.')} />
+        <Action icon="shield" label="Privacy" detail="Audio is sent only when you process it" onPress={() => showDialog({ title: 'Privacy', message: 'Your records are stored locally in SQLite. Voice audio is sent to your configured Gemini backend only for processing. Financial suggestions require your review before they are saved.', tone: 'info' })} />
       </Section>
 
       <Section title="About">

@@ -1,4 +1,4 @@
-import { Alert, Platform } from 'react-native';
+import { AppDialogOptions } from '@/components/AppDialog';
 
 export function confirmAction({ title, message, confirmLabel, cancelLabel = 'Cancel', onConfirm }: {
   title: string;
@@ -6,14 +6,15 @@ export function confirmAction({ title, message, confirmLabel, cancelLabel = 'Can
   confirmLabel: string;
   cancelLabel?: string;
   onConfirm: () => void | Promise<void>;
-}) {
-  if (Platform.OS === 'web') {
-    const confirm = (globalThis as typeof globalThis & { confirm?: (value?: string) => boolean }).confirm;
-    if (confirm?.(`${title}\n\n${message}`)) void onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: cancelLabel, style: 'cancel' },
-    { text: confirmLabel, style: 'destructive', onPress: () => void onConfirm() },
-  ]);
+}): AppDialogOptions {
+  return {
+    title,
+    message,
+    tone: 'danger',
+    dismissible: true,
+    actions: [
+      { label: cancelLabel, variant: 'secondary' },
+      { label: confirmLabel, variant: 'danger', onPress: onConfirm },
+    ],
+  };
 }

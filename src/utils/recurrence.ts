@@ -46,6 +46,19 @@ export function nextScheduledDate(rule: { days: number[]; startsOn: string }, af
   return null;
 }
 
+export function scheduledDatesBetween(rule: { days: number[]; startsOn: string }, after: string, through: string, maxDates = 64) {
+  if (!isDateKey(after) || !isDateKey(through) || through <= after) return [];
+  const dates: string[] = [];
+  let cursor = after;
+  while (dates.length < maxDates) {
+    const next = nextScheduledDate(rule, cursor);
+    if (!next || next > through) break;
+    dates.push(next);
+    cursor = next;
+  }
+  return dates;
+}
+
 export function localDateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }

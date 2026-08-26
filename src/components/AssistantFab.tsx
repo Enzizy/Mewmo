@@ -12,7 +12,7 @@ export function AssistantFab({ elevated = false }: { elevated?: boolean }) {
 
 const styles = StyleSheet.create({
   wrapper: { position: 'absolute', right: 20, bottom: 18 },
-  elevated: { bottom: 86 },
+  elevated: { bottom: 24 },
   button: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink, borderWidth: 2, borderColor: colors.surface },
   pressed: { opacity: 0.72 },
 });

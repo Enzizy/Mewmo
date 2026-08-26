@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { Href, useRouter } from 'expo-router';
-import { useMemo } from 'react';
+import { Href, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { InvestmentMark } from '@/components/InvestmentMark';
@@ -9,15 +9,20 @@ import { PageHeader } from '@/components/page-header';
 import { SectionHeading } from '@/components/section-heading';
 import { colors, fonts, radius } from '@/constants/theme';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
+import { loadSavedWeather, WeatherSnapshot } from '@/services/weather';
 import { useItems } from '@/store/ItemsContext';
 import { ThoughtItem } from '@/types';
 import { formatPeso } from '@/utils/money';
 import { nextScheduledDate } from '@/utils/recurrence';
+import { localDateInput, upcomingReminders } from '@/utils/reminders';
+import { roundedTemperature, weatherIcon, weatherLabel } from '@/utils/weather';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { hydrated, items, projects, transactions, investments, quotes, recurringRules } = useItems();
-  const money = useMemo(() => getWalletSummary({ transactions, investments, quotes }), [investments, quotes, transactions]);
+  const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
+  const [weatherLoaded, setWeatherLoaded] = useState(false);
+  const { hydrated, items, projects, transactions, investments, quotes, recurringRules, walletSetup } = useItems();
+  const money = useMemo(() => getWalletSummary({ transactions, investments, quotes, walletSetup }), [investments, quotes, transactions, walletSetup]);
   const heldPositions = useMemo(() => {
     return money.positions.filter((position) => position.quantity !== '0' || position.recorded > 0);
   }, [money.positions]);
@@ -27,10 +32,11 @@ export default function HomeScreen() {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(23, 59, 59, 999);
     return items
-      .filter((item) => !item.completed && (item.category === 'task' || item.category === 'reminder') && item.dueAt && new Date(item.dueAt) <= tomorrow)
+      .filter((item) => !item.completed && item.category === 'task' && item.dueAt && new Date(item.dueAt) <= tomorrow)
       .sort((a, b) => Date.parse(a.dueAt ?? '') - Date.parse(b.dueAt ?? ''))
       .slice(0, 3);
   }, [items]);
+  const schedule = useMemo(() => upcomingReminders(items, 2), [items]);
 
   const upcomingMoney = useMemo(() => recurringRules
     .filter((rule) => rule.active)
@@ -39,6 +45,12 @@ export default function HomeScreen() {
     .sort((a, b) => a.date.localeCompare(b.date))
     .slice(0, 3), [recurringRules]);
   const activeProject = projects.find((project) => project.status === 'active');
+
+  useFocusEffect(useCallback(() => {
+    const controller = new AbortController();
+    loadSavedWeather({ refresh: true, signal: controller.signal }).then((saved) => setWeather(saved.forecast)).catch(() => undefined).finally(() => setWeatherLoaded(true));
+    return () => controller.abort();
+  }, []));
 
   return (
     <AppScreen assistant>
@@ -50,6 +62,12 @@ export default function HomeScreen() {
       />
 
       {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : <>
+        <Pressable accessibilityRole="button" accessibilityLabel={weather ? `Open weather for ${weather.location.name}` : 'Choose a weather location'} onPress={() => router.push('/tools/weather' as Href)} style={({ pressed }) => [styles.weatherWidget, pressed && styles.pressed]}>
+          <View style={styles.weatherIcon}><Feather name={weather ? weatherIcon(weather.current.code, weather.current.isDay) : 'cloud'} size={21} color={colors.ink} /></View>
+          <View style={styles.weatherMain}>{weather ? <><Text numberOfLines={1} style={styles.weatherLocation}>{weather.location.name}</Text><Text numberOfLines={1} style={styles.weatherCondition}>{weatherLabel(weather.current.code)} · H {roundedTemperature(weather.days[0].high)} / L {roundedTemperature(weather.days[0].low)}</Text></> : <><Text style={styles.weatherLocation}>{weatherLoaded ? 'Add your weather' : 'Loading weather…'}</Text><Text style={styles.weatherCondition}>{weatherLoaded ? 'Choose a city for your Home forecast.' : 'Checking your saved city.'}</Text></>}</View>
+          {weather ? <Text style={styles.weatherTemp}>{roundedTemperature(weather.current.temperature)}</Text> : null}<Feather name="chevron-right" size={17} color={colors.muted} />
+        </Pressable>
+
         <Pressable accessibilityRole="button" accessibilityLabel="Open wallet and investment details" onPress={() => router.push('/wallet' as Href)} style={({ pressed }) => [styles.moneySurface, pressed && styles.pressed]}>
           <View style={styles.moneyHeader}><Text style={styles.moneyLabel}>Money overview</Text><Feather name="arrow-up-right" size={18} color={colors.secondary} /></View>
           <View style={styles.moneyMetrics}>
@@ -82,10 +100,21 @@ export default function HomeScreen() {
         </Pressable>
 
         <View style={styles.section}>
+          <SectionHeading title="Your schedule" detail={schedule.length ? 'Now and next' : 'Nothing coming up'} action={<Pressable accessibilityRole="button" onPress={() => router.push('/tasks/calendar' as Href)} style={styles.textAction}><Text style={styles.textActionLabel}>View calendar</Text></Pressable>} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={({ pressed }) => [styles.scheduleSurface, pressed && styles.pressed]}>
+            <View style={styles.scheduleDate}><Feather name="calendar" size={18} color={colors.ink} /><Text style={styles.scheduleDay}>{new Date().getDate()}</Text></View>
+            <View style={styles.scheduleMain}>
+              {schedule.map(({ item, date }, index) => <View key={item.id} style={[styles.scheduleItem, index > 0 && styles.scheduleItemBorder]}><View style={styles.scheduleCopy}><Text numberOfLines={1} style={styles.scheduleTitle}>{item.title}</Text><Text style={styles.scheduleMeta}>{formatReminderDate(date)}{item.recurrence ? ` · ${item.recurrence.frequency}` : ''}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></View>)}
+              {!schedule.length ? <View style={styles.scheduleItem}><View style={styles.scheduleCopy}><Text style={styles.scheduleTitle}>Your calendar is clear</Text><Text style={styles.scheduleMeta}>Tap to add a reminder.</Text></View><Feather name="plus" size={17} color={colors.muted} /></View> : null}
+            </View>
+          </Pressable>
+        </View>
+
+        <View style={styles.section}>
           <SectionHeading title="Needs attention" detail={attention.length ? `${attention.length} due soon` : 'Nothing urgent'} action={<Pressable accessibilityRole="button" onPress={() => router.push('/tasks' as Href)} style={styles.textAction}><Text style={styles.textActionLabel}>View tasks</Text></Pressable>} />
           <View style={styles.list}>
             {attention.map((item) => <AttentionRow key={item.id} item={item} onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} />)}
-            {!attention.length ? <View style={styles.calmEmpty}><PixelCat pose="sleep" size={54} /><View style={styles.emptyCopy}><Text style={styles.emptyTitle}>You are clear for now</Text><Text style={styles.emptyText}>New urgent tasks and reminders will appear here.</Text></View></View> : null}
+            {!attention.length ? <View style={styles.calmEmpty}><PixelCat pose="sleep" size={54} /><View style={styles.emptyCopy}><Text style={styles.emptyTitle}>You are clear for now</Text><Text style={styles.emptyText}>Urgent tasks will appear here.</Text></View></View> : null}
           </View>
         </View>
 
@@ -115,11 +144,25 @@ function formatDateKey(value: string) {
   return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' }).format(new Date(year, month - 1, day));
 }
 
+function formatReminderDate(date: Date) {
+  const today = localDateInput();
+  const tomorrowDate = new Date(); tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const day = localDateInput(date);
+  const prefix = day === today ? 'Today' : day === localDateInput(tomorrowDate) ? 'Tomorrow' : new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' }).format(date);
+  return `${prefix} · ${new Intl.DateTimeFormat('en-PH', { timeStyle: 'short' }).format(date)}`;
+}
+
 const styles = StyleSheet.create({
   profileButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   loading: { minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
-  moneySurface: { marginTop: 24, padding: 20, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  weatherWidget: { minHeight: 76, marginTop: 20, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  weatherIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentSoft },
+  weatherMain: { flex: 1, minWidth: 0 },
+  weatherLocation: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
+  weatherCondition: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
+  weatherTemp: { fontFamily: fonts.bodyBold, fontSize: 22, fontVariant: ['tabular-nums'], color: colors.ink },
+  moneySurface: { marginTop: 12, padding: 20, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   moneyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   moneyLabel: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   moneyMetrics: { marginTop: 21, flexDirection: 'row', alignItems: 'stretch' },
@@ -140,6 +183,15 @@ const styles = StyleSheet.create({
   emptyInvestmentTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
   emptyInvestmentCopy: { marginTop: 2, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
   section: { marginTop: 34 },
+  scheduleSurface: { marginTop: 12, minHeight: 82, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  scheduleDate: { width: 48, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 1, backgroundColor: colors.accentSoft },
+  scheduleDay: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.ink },
+  scheduleMain: { flex: 1, minWidth: 0 },
+  scheduleItem: { minHeight: 49, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  scheduleItemBorder: { borderTopWidth: 1, borderTopColor: colors.border },
+  scheduleCopy: { flex: 1, minWidth: 0 },
+  scheduleTitle: { fontFamily: fonts.bodyMedium, fontSize: 13, lineHeight: 18, color: colors.ink },
+  scheduleMeta: { marginTop: 2, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
   textAction: { minHeight: 44, paddingHorizontal: 4, justifyContent: 'center' },
   textActionLabel: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.accent },
   list: { marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border },

@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { AppScreen } from '@/components/AppScreen';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -18,6 +19,7 @@ function formatTime(milliseconds: number) {
 }
 
 export default function RecordScreen() {
+  const { showDialog } = useAppDialog();
   const router = useRouter();
   const { setPendingRecording } = useItems();
   const recorder = useAudioRecorder(recordingOptions);
@@ -34,7 +36,7 @@ export default function RecordScreen() {
     const start = async () => {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        Alert.alert('Microphone access needed', 'Mewmo needs microphone permission to record. You can enable it in Android settings.');
+        showDialog({ title: 'Microphone access needed', message: 'Mewmo needs microphone permission to record. You can enable it in Android settings.', tone: 'warning' });
         leave();
         return;
       }
@@ -44,10 +46,10 @@ export default function RecordScreen() {
       setStarting(false);
     };
     start().catch((error) => {
-      Alert.alert('Recording unavailable', error instanceof Error ? error.message : 'The microphone could not be started.');
+      showDialog({ title: 'Recording unavailable', message: error instanceof Error ? error.message : 'The microphone could not be started.', tone: 'danger' });
       leave();
     });
-  }, [leave, recorder]);
+  }, [leave, recorder, showDialog]);
 
   const togglePause = () => {
     if (starting || stopping) return;
@@ -71,16 +73,16 @@ export default function RecordScreen() {
       router.replace('/processing');
     } catch (error) {
       setStopping(false);
-      Alert.alert('Could not save recording', error instanceof Error ? error.message : 'Please try again.');
+      showDialog({ title: 'Could not save recording', message: error instanceof Error ? error.message : 'Please try again.', tone: 'danger' });
     }
   };
 
   const discardRecording = () => {
-    confirmAction({ title: 'Discard recording?', message: 'This voice note has not been saved yet.', confirmLabel: 'Discard', cancelLabel: 'Keep recording', onConfirm: async () => {
+    showDialog(confirmAction({ title: 'Discard recording?', message: 'This voice note has not been saved yet.', confirmLabel: 'Discard', cancelLabel: 'Keep recording', onConfirm: async () => {
         await recorder.stop().catch(() => undefined);
         await setAudioModeAsync({ allowsRecording: false }).catch(() => undefined);
         leave();
-      } });
+      } }));
   };
 
   return (

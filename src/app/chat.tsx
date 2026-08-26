@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -8,11 +9,12 @@ import { colors, fonts } from '@/constants/theme';
 import { askPersonalAssistant, AssistantMessage } from '@/services/assistantApi';
 import { useItems } from '@/store/ItemsContext';
 
-const suggestions = ['What is on my schedule?', 'How much are my investments worth?', 'How is my grocery budget?'];
+const suggestions = ['What is on my schedule?', 'What is safe for me to spend?', 'What bills are coming up?', 'Which tool should I use?'];
 
 export default function ChatScreen() {
+  const { showDialog } = useAppDialog();
   const data = useItems();
-  const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: 'Ask me about your confirmed schedule, projects, budget, or investments.' }]);
+  const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: 'Ask me about your schedule, projects, wallet, investments, subscriptions, forecast, or Mewmo tools.' }]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -28,7 +30,7 @@ export default function ChatScreen() {
       const answer = await askPersonalAssistant(text, previous, data);
       setMessages((current) => [...current, { role: 'assistant', text: answer }]);
     } catch (error) {
-      Alert.alert('Assistant unavailable', error instanceof Error ? error.message : 'Try again.');
+      showDialog({ title: 'Assistant unavailable', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
     } finally {
       setSending(false);
     }
