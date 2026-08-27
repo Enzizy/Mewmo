@@ -146,7 +146,7 @@ async function saveTowardTarget(image: ImageRef, format: ImageFormat, initialQua
 
 function outputName(name: string, format: ImageFormat) {
   const base = name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 80) || 'image';
-  return `${base}-mewmo.${EXTENSIONS[format]}`;
+  return `${base}-lifedesk.${EXTENSIONS[format]}`;
 }
 
 async function processOne(image: SelectedImage, settings: ImageProcessingSettings): Promise<ProcessedImage> {

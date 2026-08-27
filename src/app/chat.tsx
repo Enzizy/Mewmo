@@ -16,7 +16,7 @@ export default function ChatScreen() {
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const data = useItems();
-  const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: 'Ask me about your schedule, projects, wallet, investments, subscriptions, forecast, or Mewmo tools.' }]);
+  const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: 'Ask me about your schedule, projects, wallet, investments, subscriptions, forecast, or LifeDesk tools.' }]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
@@ -50,8 +50,8 @@ export default function ChatScreen() {
       {messages.map((message, index) => message.text.startsWith('REVIEW:') ? <Pressable accessibilityRole="button" key={`${message.role}-${index}`} onPress={() => router.push({ pathname: '/review', params: { id: message.text.slice(7) } })} style={styles.reviewButton}><Feather name="inbox" size={17} color={colors.paper} /><Text style={styles.reviewButtonText}>Review proposed changes</Text><Feather name="chevron-right" size={17} color={colors.paper} /></Pressable> : <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.catBubble]}><Text selectable style={[styles.message, message.role === 'user' && styles.userMessage]}>{message.text}</Text></View>)}
       {sending ? <View style={[styles.bubble, styles.catBubble, styles.loading]}><ActivityIndicator size="small" color={colors.ink} /><Text style={styles.thinking}>CHECKING YOUR RECORDS...</Text></View> : null}
     </ScrollView>
-    {!messages.some((message) => message.role === 'user') ? <View style={styles.suggestions}>{suggestions.map((suggestion) => <Pressable key={suggestion} onPress={() => send(suggestion)} style={styles.suggestion}><Text style={styles.suggestionText}>{suggestion}</Text></Pressable>)}</View> : null}
-    <View style={styles.composer}><TextInput accessibilityLabel="Ask a personal question" value={input} onChangeText={setInput} onSubmitEditing={() => send()} returnKeyType="send" placeholder="Ask about your life..." placeholderTextColor={colors.muted} style={styles.input} /><Pressable accessibilityLabel="Send question" disabled={sending || !input.trim()} onPress={() => send()} style={[styles.send, (sending || !input.trim()) && styles.disabled]}><Feather name="arrow-up" size={20} color={colors.surface} /></Pressable></View>
+      {!messages.some((message) => message.role === 'user') ? <View style={styles.suggestions}>{suggestions.map((suggestion) => <Pressable accessibilityRole="button" key={suggestion} onPress={() => send(suggestion)} style={styles.suggestion}><Text style={styles.suggestionText}>{suggestion}</Text></Pressable>)}</View> : null}
+    <View style={styles.composer}><TextInput accessibilityLabel="Ask a personal question" value={input} onChangeText={setInput} onSubmitEditing={() => send()} returnKeyType="send" placeholder="Ask about your life..." placeholderTextColor={colors.muted} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="Send question" disabled={sending || !input.trim()} onPress={() => send()} style={[styles.send, (sending || !input.trim()) && styles.disabled]}><Feather name="arrow-up" size={20} color={colors.surface} /></Pressable></View>
   </AppScreen>;
 }
 

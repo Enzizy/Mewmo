@@ -5,7 +5,7 @@ export type ExchangeRate = { from: CurrencyCode; to: CurrencyCode; rate: number;
 
 export async function fetchExchangeRate(from: CurrencyCode, to: CurrencyCode): Promise<ExchangeRate> {
   const apiUrl = getOrganizerApiUrl();
-  if (!apiUrl) throw new Error('Add EXPO_PUBLIC_MEWMO_API_URL before converting currencies.');
+  if (!apiUrl) throw new Error('Add EXPO_PUBLIC_LIFEDESK_API_URL before converting currencies.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   try {
@@ -17,7 +17,7 @@ export async function fetchExchangeRate(from: CurrencyCode, to: CurrencyCode): P
     return body as ExchangeRate;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw new Error('The exchange-rate request timed out. Try again.');
-    if (error instanceof TypeError) throw new Error('Could not reach the Mewmo server. Check that it is running and that the app API address is correct.');
+    if (error instanceof TypeError) throw new Error('Could not reach the LifeDesk server. Check that it is running and that the app API address is correct.');
     throw error;
   } finally { clearTimeout(timeout); }
 }

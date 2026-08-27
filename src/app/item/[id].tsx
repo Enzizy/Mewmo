@@ -22,7 +22,12 @@ export default function ItemDetailScreen() {
 
   if (!item) return <AppScreen><ScreenHeader back /><View style={styles.notFound}><Text style={styles.notFoundTitle}>Item not found</Text><Text style={styles.notFoundText}>It may have been deleted.</Text></View></AppScreen>;
   const meta = categoryMeta[item.category];
-  const saveTitle = () => { if (draftTitle.trim()) updateTitle(item.id, draftTitle.trim()); setEditing(false); };
+  const reportUpdateError = (error: unknown) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
+  const saveTitle = async () => {
+    if (!draftTitle.trim()) return;
+    try { await updateTitle(item.id, draftTitle.trim()); setEditing(false); }
+    catch (error) { reportUpdateError(error); }
+  };
   const add = () => { if (!newSubtask.trim()) return; addSubtask(item.id, newSubtask.trim()); setNewSubtask(''); };
   const remove = () => showDialog(confirmAction({ title: 'Delete item?', message: 'This removes the item from your collection.', confirmLabel: 'Delete', onConfirm: () => { deleteItem(item.id); router.canGoBack() ? router.back() : router.replace('/'); } }));
 
@@ -30,7 +35,7 @@ export default function ItemDetailScreen() {
     <AppScreen background={colors.paper}>
       <ScreenHeader back action={<Pressable onPress={() => setEditing(true)}><Feather name="edit-3" size={20} color={colors.ink} /></Pressable>} />
       <Text style={[styles.kicker, { color: meta.color }]}>{meta.label.toUpperCase()}</Text>
-      {editing ? <View style={styles.editRow}><TextInput autoFocus value={draftTitle} onChangeText={setDraftTitle} style={styles.titleInput} onSubmitEditing={saveTitle} /><Pressable onPress={saveTitle} style={styles.save}><Feather name="check" size={20} color={colors.surface} /></Pressable></View> : <Text style={[styles.title, item.completed && styles.done]}>{item.title}</Text>}
+      {editing ? <View style={styles.editRow}><TextInput autoFocus value={draftTitle} onChangeText={setDraftTitle} style={styles.titleInput} onSubmitEditing={() => void saveTitle()} /><Pressable accessibilityRole="button" accessibilityLabel="Save item title" onPress={() => void saveTitle()} style={styles.save}><Feather name="check" size={20} color={colors.surface} /></Pressable></View> : <Text style={[styles.title, item.completed && styles.done]}>{item.title}</Text>}
       <View style={styles.metadata}><View style={styles.metaItem}><Feather name="calendar" size={15} color={colors.secondary} /><Text style={styles.metaText}>{item.dateLabel}{item.time ? `, ${item.time}` : ''}</Text></View><View style={styles.metaItem}><Feather name="folder" size={15} color={colors.secondary} /><Text style={styles.metaText}>Personal</Text></View></View>
 
       {item.category === 'task' && <View style={styles.section}>
@@ -41,8 +46,8 @@ export default function ItemDetailScreen() {
 
       <View style={styles.section}><Text style={styles.sectionTitle}>Notes</Text><Text style={styles.notes}>{item.detail ?? 'No notes added yet.'}</Text></View>
       <View style={styles.actionBar}>
-        {item.category === 'task' && <Pressable accessibilityRole="button" onPress={() => toggleComplete(item.id)} style={styles.primaryAction}><Feather name={item.completed ? 'rotate-ccw' : 'check'} size={18} color={colors.surface} /><Text style={styles.primaryText}>{item.completed ? 'Mark open' : 'Mark as done'}</Text></Pressable>}
-        <View style={styles.secondaryActions}><Action icon="edit-3" label="Edit" onPress={() => setEditing(true)} /><Action icon="calendar" label={item.dueAt ? 'Reschedule' : 'Tomorrow'} onPress={() => scheduleTomorrow(item.id)} /><Action icon="trash-2" label="Delete" danger onPress={remove} /></View>
+        {item.category === 'task' && <Pressable accessibilityRole="button" onPress={() => void toggleComplete(item.id).catch(reportUpdateError)} style={styles.primaryAction}><Feather name={item.completed ? 'rotate-ccw' : 'check'} size={18} color={colors.surface} /><Text style={styles.primaryText}>{item.completed ? 'Mark open' : 'Mark as done'}</Text></Pressable>}
+        <View style={styles.secondaryActions}><Action icon="edit-3" label="Edit title" onPress={() => setEditing(true)} /><Action icon="calendar" label="Tomorrow" onPress={() => void scheduleTomorrow(item.id).catch(reportUpdateError)} /><Action icon="trash-2" label="Delete" danger onPress={remove} /></View>
       </View>
     </AppScreen>
   );

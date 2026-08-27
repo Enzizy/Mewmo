@@ -1,6 +1,6 @@
-# Mewmo
+# LifeDesk
 
-Mewmo is an Android-first, local-first personal quest log built with Expo SDK 57. Speak naturally, review what Gemini understood, then confirm tasks, reminders, ideas, notes, projects, money records, or BTC/VOO contributions. The pixel black cat provides state feedback while the underlying records stay practical and explicit.
+LifeDesk is an Android-first, local-first personal command center built with Expo SDK 57. Speak naturally, review what Gemini understood, then confirm tasks, reminders, ideas, notes, projects, money records, or BTC/VOO contributions. The pixel black cat provides state feedback while the underlying records stay practical and explicit.
 
 ## What is implemented
 
@@ -26,7 +26,7 @@ Mewmo is an Android-first, local-first personal quest log built with Expo SDK 57
 5. Set the mobile API address in `.env`, for example:
 
    ```text
-   EXPO_PUBLIC_MEWMO_API_URL=http://192.168.1.25:8787
+   EXPO_PUBLIC_LIFEDESK_API_URL=http://192.168.1.25:8787
    ```
 
 Do not use `localhost`: from a physical phone, localhost refers to the phone. The former `EXPO_PUBLIC_BRAIN_DUMP_API_URL` and `EXPO_PUBLIC_GATHER_API_URL` names remain accepted so existing local setups continue to work.
@@ -56,7 +56,7 @@ Open the latest Expo Go app and scan the QR code shown by Expo. Grant microphone
 - Gemini suggestions do not become durable records until the review screen is confirmed.
 - Peso values use integer centavos. Investment quantities use fixed eight-decimal arithmetic.
 - An investment and its linked cash movement are committed atomically and are not double-counted as ordinary spending.
-- Market values are estimates from a manually entered or Twelve Data quote and always show the source time. Mewmo is not financial advice or a brokerage.
+- Market values are estimates from a manually entered or Twelve Data quote and always show the source time. LifeDesk is not financial advice or a brokerage.
 - Recurring rules post locally when due or on the next app open. Pausing or deleting a rule never deletes its historical transactions.
 - Investment automation requires both the cash amount and actual quantity; market quotes are never used to invent a purchase lot.
 - The personal assistant sends the question and a bounded summary of confirmed records to Gemini. Audio files and voice transcripts are excluded.

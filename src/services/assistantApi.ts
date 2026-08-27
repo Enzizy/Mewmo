@@ -8,7 +8,7 @@ export type AssistantMessage = { role: 'user' | 'assistant'; text: string };
 
 export async function askPersonalAssistant(message: string, history: AssistantMessage[], data: AppDataSnapshot) {
   const apiUrl = getOrganizerApiUrl();
-  if (!apiUrl) throw new Error('Add EXPO_PUBLIC_MEWMO_API_URL before using the assistant.');
+  if (!apiUrl) throw new Error('Add EXPO_PUBLIC_LIFEDESK_API_URL before using the assistant.');
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
   try {

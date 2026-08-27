@@ -1,12 +1,12 @@
-# Mewmo Pixel Rebrand & Personal OS Roadmap
+# LifeDesk Personal OS Roadmap
 
 > Status: approved for implementation on August 18, 2026. The local-first product baseline through Projects, Money, Investments, review-before-commit, and gamification has been implemented; hosted backend deployment and store release remain separate release work.
 >
-> Product name: **Mewmo** — “mew” + “memo.” The black cat's name remains an open decision.
+> Product name: **LifeDesk**. The name centers the product on its purpose: one workspace for personal planning, money, records, and useful tools. The black cat remains the mascot rather than the product identity.
 
 ## Recommendation
 
-Evolve Mewmo into a **personal quest log**: one calm place where a person speaks naturally, reviews what the app understood, and lets the black cat organize the result into today's priorities, project memory, reminders, ideas, notes, or money records.
+Evolve LifeDesk into a **personal command center**: one calm place where a person speaks naturally, reviews what the app understood, and lets the assistant organize the result into today's priorities, project memory, reminders, ideas, notes, or money records.
 
 The product should remain useful before it becomes playful. Gamification should reinforce real progress, reflection, and clarity; it should never trivialize money, manufacture anxiety, or reward investment performance.
 
@@ -41,7 +41,7 @@ The visual language should come directly from the portfolio and supplied cat spr
 
 ### Visual reference
 
-![Mewmo pixel UI concept](./assets/brain-dump-pixel-ui-concept.png)
+![LifeDesk pixel UI concept](./assets/brain-dump-pixel-ui-concept.png)
 
 This board is directional, not a final specification. It demonstrates three important moments: Today, capture review, and Money. Labels, amounts, navigation names, and the cat's dialogue remain editable.
 
@@ -105,13 +105,13 @@ Keep the mobile navigation compact:
 
 1. **Today** — priorities and the next useful action.
 2. **Life** — a hub with Work and Money sections.
-3. **Capture** — the central Mewmo action.
+3. **Capture** — the central LifeDesk action.
 4. **Activity** — a meaningful history of completed work and confirmed records.
 5. **Profile** — preferences, privacy, backup/export, cat settings, and gamification controls.
 
 Global search can live in the header instead of consuming a permanent navigation slot.
 
-### The core Mewmo flow
+### The core LifeDesk flow
 
 1. The user records or types a natural thought.
 2. The original capture is saved before processing begins.
@@ -257,7 +257,7 @@ Deliverables:
 
 **Acceptance gate:** upgrading preserves all existing data, re-running a migration is safe, and a failed migration cannot silently destroy the user's records.
 
-### Stage 3 — Mewmo review and routing
+### Stage 3 — LifeDesk review and routing
 
 **Goal:** make one capture safely create records across multiple domains.
 

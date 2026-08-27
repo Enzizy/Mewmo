@@ -86,7 +86,7 @@ class ArMeasureView(context: Context, appContext: AppContext) : ExpoView(context
 
     val activity = appContext.currentActivity
     if (activity == null) {
-      emit("error", "Mewmo could not access the current Android screen.")
+      emit("error", "LifeDesk could not access the current Android screen.")
       return
     }
 
@@ -94,7 +94,7 @@ class ArMeasureView(context: Context, appContext: AppContext) : ExpoView(context
       when (ArCoreApk.getInstance().requestInstall(activity, !installRequested)) {
         ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
           installRequested = true
-          emit("installing", "Finish installing Google Play Services for AR, then return to Mewmo.")
+          emit("installing", "Finish installing Google Play Services for AR, then return to LifeDesk.")
           return
         }
         ArCoreApk.InstallStatus.INSTALLED -> Unit

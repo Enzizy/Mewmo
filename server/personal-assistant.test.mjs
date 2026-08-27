@@ -14,7 +14,7 @@ test('rejects missing and oversized assistant requests', () => {
   assert.throws(() => validateAssistantRequest({ message: 'x', context: { value: 'a'.repeat(200_001) } }), /too large/);
 });
 
-test('defines current Mewmo finance and action boundaries', () => {
+test('defines current LifeDesk finance and action boundaries', () => {
   assert.match(assistantSystemInstruction, /safeToSpendMinor/);
   assert.match(assistantSystemInstruction, /subscriptions or bills/);
   assert.match(assistantSystemInstruction, /never changes records directly/i);

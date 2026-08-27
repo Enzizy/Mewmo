@@ -59,6 +59,21 @@ export function upcomingReminders(items: ThoughtItem[], limit = 3, after = new D
     .slice(0, limit);
 }
 
+export function reminderOccurrencesBetween(item: ThoughtItem, start: Date, endExclusive: Date): Date[] {
+  if (endExclusive <= start) return [];
+  const occurrences: Date[] = [];
+  let cursor = new Date(start);
+
+  while (occurrences.length < 400) {
+    const occurrence = nextReminderDate(item, cursor);
+    if (!occurrence || occurrence >= endExclusive) break;
+    occurrences.push(occurrence);
+    cursor = new Date(occurrence.getTime() + 1);
+  }
+
+  return occurrences;
+}
+
 export function reminderDateTime(dateText: string, timeText: string): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText.trim());
   const time = /^(\d{1,2}):(\d{2})$/.exec(timeText.trim());

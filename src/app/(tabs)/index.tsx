@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { InvestmentMark } from '@/components/InvestmentMark';
@@ -8,6 +8,7 @@ import { PixelCat } from '@/components/PixelCat';
 import { PageHeader } from '@/components/page-header';
 import { SectionHeading } from '@/components/section-heading';
 import { colors, fonts, radius } from '@/constants/theme';
+import { USER_DISPLAY_NAME } from '@/constants/brand';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { HOME_SHORTCUTS } from '@/features/home/home-preferences';
 import { loadSavedWeather, WeatherSnapshot } from '@/services/weather';
@@ -17,11 +18,13 @@ import { formatPeso } from '@/utils/money';
 import { nextScheduledDate } from '@/utils/recurrence';
 import { localDateInput, upcomingReminders } from '@/utils/reminders';
 import { roundedTemperature, weatherIcon, weatherLabel } from '@/utils/weather';
+import { timeGreeting } from '@/utils/greeting';
 
 export default function HomeScreen() {
   const router = useRouter();
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherLoaded, setWeatherLoaded] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const data = useItems();
   const { hydrated, items, projects, transactions, investments, quotes, recurringRules, walletSetup, financialOccurrences, reviewProposals, savingsGoals, goalSuggestions, homePreferences } = data;
   const money = useMemo(() => getWalletSummary({ transactions, investments, quotes, walletSetup }), [investments, quotes, transactions, walletSetup]);
@@ -57,6 +60,11 @@ export default function HomeScreen() {
     return () => controller.abort();
   }, []));
 
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   const compact = (id: HomeWidgetId) => homePreferences.compact.includes(id);
   const visibleWidgets = homePreferences.order.filter((id) => !homePreferences.hidden.includes(id));
   const widget = (id: HomeWidgetId) => {
@@ -72,7 +80,7 @@ export default function HomeScreen() {
   };
 
   return <AppScreen assistant>
-    <PageHeader eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date())} title="Good morning, Zhyronne" supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
+    <PageHeader eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)} title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`} supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
     {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : visibleWidgets.map(widget)}
   </AppScreen>;
 }

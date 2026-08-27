@@ -1,4 +1,3 @@
-import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { ThoughtItem } from '@/types';
 
@@ -7,8 +6,15 @@ type NotificationsModule = typeof import('expo-notifications');
 
 let notificationsModulePromise: Promise<NotificationsModule> | undefined;
 
+export class NotificationPermissionError extends Error {
+  constructor() {
+    super('Notifications are blocked on this device. Enable them in your phone settings and try again.');
+    this.name = 'NotificationPermissionError';
+  }
+}
+
 export function isNotificationRuntimeAvailable() {
-  return Platform.OS !== 'web' && Constants.expoGoConfig == null;
+  return Platform.OS !== 'web';
 }
 
 async function getNotifications() {
@@ -30,13 +36,22 @@ export async function configureNotifications() {
     }),
   });
 
-  if (Platform.OS === 'android') {
-    await notifications.setNotificationChannelAsync(channelId, {
-      name: 'Thought reminders',
-      importance: notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 150, 250],
-    });
-  }
+  await ensureAndroidChannel(notifications);
+}
+
+export async function hasNotificationPermission() {
+  const notifications = await getNotifications();
+  if (!notifications) return false;
+  return (await notifications.getPermissionsAsync()).granted;
+}
+
+export async function requestNotificationPermission() {
+  const notifications = await getNotifications();
+  if (!notifications) return false;
+  await ensureAndroidChannel(notifications);
+  const existing = await notifications.getPermissionsAsync();
+  if (existing.granted) return true;
+  return (await notifications.requestPermissionsAsync()).granted;
 }
 
 export async function subscribeToNotificationResponses(onItemPress: (itemId: string) => void) {
@@ -57,9 +72,7 @@ export async function scheduleItemNotification(item: ThoughtItem) {
   if (!notifications) return undefined;
   const date = new Date(item.dueAt);
   if (Number.isNaN(date.getTime()) || (!item.recurrence && date.getTime() <= Date.now())) return undefined;
-  const existing = await notifications.getPermissionsAsync();
-  const permission = existing.granted ? existing : await notifications.requestPermissionsAsync();
-  if (!permission.granted) return undefined;
+  if (!await requestNotificationPermission()) throw new NotificationPermissionError();
 
   const trigger = item.recurrence ? recurrenceTrigger(notifications, item.recurrence) : {
     type: notifications.SchedulableTriggerInputTypes.DATE,
@@ -74,6 +87,15 @@ export async function scheduleItemNotification(item: ThoughtItem) {
       sound: true,
     },
     trigger,
+  });
+}
+
+async function ensureAndroidChannel(notifications: NotificationsModule) {
+  if (Platform.OS !== 'android') return;
+  await notifications.setNotificationChannelAsync(channelId, {
+    name: 'Thought reminders',
+    importance: notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 150, 250],
   });
 }
 

@@ -32,7 +32,14 @@ import {
   saveWalletSetup,
   updateThoughtItem,
 } from '@/data/database';
-import { cancelAllItemNotifications, cancelItemNotification, scheduleItemNotification } from '@/services/notifications';
+import {
+  cancelAllItemNotifications,
+  cancelItemNotification,
+  hasNotificationPermission,
+  NotificationPermissionError,
+  requestNotificationPermission,
+  scheduleItemNotification,
+} from '@/services/notifications';
 import { fetchMarketQuotes } from '@/services/marketApi';
 import {
   ActivityEvent,
@@ -83,18 +90,18 @@ type ItemsContextValue = AppDataSnapshot & {
   setPendingRecording: (recording: PendingRecording | null) => void;
   setPendingOrganizedDump: (dump: OrganizedDump | null) => void;
   setProcessingError: (message: string | null) => void;
-  setNotificationEnabled: (enabled: boolean) => void;
+  setNotificationEnabled: (enabled: boolean) => Promise<void>;
   setRewardsEnabled: (enabled: boolean) => void;
   confirmOrganizedDump: (organized: OrganizedDump) => Promise<void>;
   queueReviewProposal: (source: ReviewProposalSource, organized: OrganizedDump, recording?: PendingRecording) => Promise<ReviewProposal>;
   confirmReviewProposal: (id: string, organized: OrganizedDump) => Promise<void>;
   discardReviewProposal: (id: string) => Promise<void>;
-  toggleComplete: (id: string) => void;
+  toggleComplete: (id: string) => Promise<void>;
   toggleFavorite: (id: string) => void;
   deleteItem: (id: string) => void;
   deleteDump: (id: string) => void;
-  changeCategory: (id: string, category: Category) => void;
-  updateTitle: (id: string, title: string) => void;
+  changeCategory: (id: string, category: Category) => Promise<void>;
+  updateTitle: (id: string, title: string) => Promise<void>;
   scheduleTomorrow: (id: string) => Promise<void>;
   addReminder: (input: ReminderInput) => Promise<ThoughtItem>;
   updateReminder: (id: string, input: ReminderInput) => Promise<void>;
@@ -133,7 +140,7 @@ const LEGACY_NOTIFICATIONS_KEY = 'brain-dump.notifications';
 const LEGACY_REWARDS_KEY = 'brain-dump.rewards';
 const ItemsContext = createContext<ItemsContextValue | null>(null);
 
-function readMigratedPreference(key: string, legacyKey: string) {
+function readMigratedPreference(key: string, legacyKey: string, defaultValue: boolean) {
   const current = localStorage.getItem(key);
   if (current != null) return current !== 'false';
   const legacy = localStorage.getItem(legacyKey);
@@ -141,7 +148,7 @@ function readMigratedPreference(key: string, legacyKey: string) {
     localStorage.setItem(key, legacy);
     localStorage.removeItem(legacyKey);
   }
-  return legacy !== 'false';
+  return legacy == null ? defaultValue : legacy !== 'false';
 }
 
 export function ItemsProvider({ children }: PropsWithChildren) {
@@ -152,14 +159,23 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const [latestItemIds, setLatestItemIds] = useState<string[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [marketRefreshError, setMarketRefreshError] = useState<string | null>(null);
-  const [notificationEnabled, setNotificationEnabledState] = useState(() => readMigratedPreference(NOTIFICATIONS_KEY, LEGACY_NOTIFICATIONS_KEY));
-  const [rewardsEnabled, setRewardsEnabledState] = useState(() => readMigratedPreference(REWARDS_KEY, LEGACY_REWARDS_KEY));
+  const [notificationEnabled, setNotificationEnabledState] = useState(() => readMigratedPreference(NOTIFICATIONS_KEY, LEGACY_NOTIFICATIONS_KEY, false));
+  const [rewardsEnabled, setRewardsEnabledState] = useState(() => readMigratedPreference(REWARDS_KEY, LEGACY_REWARDS_KEY, true));
 
   const refresh = useCallback(async () => setData(await loadAppData()), []);
 
   useEffect(() => {
     refresh().catch((error) => setProcessingError(error instanceof Error ? error.message : 'Could not open local storage.')).finally(() => setHydrated(true));
   }, [refresh]);
+
+  useEffect(() => {
+    if (!hydrated || !notificationEnabled) return;
+    hasNotificationPermission().then((granted) => {
+      if (granted) return;
+      setNotificationEnabledState(false);
+      localStorage.setItem(NOTIFICATIONS_KEY, 'false');
+    }).catch(() => undefined);
+  }, [hydrated, notificationEnabled]);
 
   useEffect(() => {
     const needsMarketPrices = data.investments.length > 0 || data.recurringRules.some((rule) => rule.active && rule.kind === 'investment');
@@ -177,22 +193,43 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     return () => { active = false; };
   }, [data.investments.length, data.quotes, data.recurringRules, hydrated, refresh]);
 
-  const setNotificationEnabled = useCallback((enabled: boolean) => {
-    setNotificationEnabledState(enabled);
-    localStorage.setItem(NOTIFICATIONS_KEY, String(enabled));
-    const syncSchedules = async () => {
-      if (!enabled) await cancelAllItemNotifications();
+  const scheduleNotificationForItem = useCallback(async (item: ThoughtItem) => {
+    try {
+      return await scheduleItemNotification(item);
+    } catch (error) {
+      if (error instanceof NotificationPermissionError) {
+        setNotificationEnabledState(false);
+        localStorage.setItem(NOTIFICATIONS_KEY, 'false');
+      }
+      throw error;
+    }
+  }, []);
+
+  const setNotificationEnabled = useCallback(async (enabled: boolean) => {
+    if (enabled && !await requestNotificationPermission()) throw new NotificationPermissionError();
+    await cancelAllItemNotifications();
+
+    try {
       const nextItems = await Promise.all(data.items.map(async (item) => {
         const next: ThoughtItem = { ...item, notificationId: undefined };
-        if (enabled && (item.category === 'task' || item.category === 'reminder') && item.reminderEnabled !== false && !item.completed) next.notificationId = await scheduleItemNotification(next);
+        if (enabled && shouldScheduleNotification(next)) next.notificationId = await scheduleNotificationForItem(next);
         await updateThoughtItem(next);
         return next;
       }));
       const byId = new Map(nextItems.map((item) => [item.id, item]));
       setData((current) => ({ ...current, items: current.items.map((item) => byId.get(item.id) ?? item) }));
-    };
-    syncSchedules().catch(() => undefined);
-  }, [data.items]);
+      setNotificationEnabledState(enabled);
+      localStorage.setItem(NOTIFICATIONS_KEY, String(enabled));
+    } catch (error) {
+      await cancelAllItemNotifications();
+      const clearedItems = data.items.map((item) => ({ ...item, notificationId: undefined }));
+      await Promise.all(clearedItems.map(updateThoughtItem)).catch(() => undefined);
+      setData((current) => ({ ...current, items: current.items.map((item) => ({ ...item, notificationId: undefined })) }));
+      setNotificationEnabledState(false);
+      localStorage.setItem(NOTIFICATIONS_KEY, 'false');
+      throw error;
+    }
+  }, [data.items, scheduleNotificationForItem]);
 
   const setRewardsEnabled = useCallback((enabled: boolean) => {
     setRewardsEnabledState(enabled);
@@ -226,7 +263,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
           completed: suggestion.category === 'task' ? false : undefined,
           subtasks: suggestion.subtasks.map((title, subtaskIndex) => ({ id: `${dumpId}-${index}-${subtaskIndex}`, title, completed: false })),
         };
-        item.notificationId = notificationEnabled ? await scheduleItemNotification(item) : undefined;
+        item.notificationId = notificationEnabled ? await scheduleNotificationForItem(item) : undefined;
         items.push(item);
       } else if (suggestion.category === 'project') {
         projects.push({ id: `${dumpId}-project-${index}`, name: suggestion.projectName || suggestion.title, summary: suggestion.detail ?? undefined, status: 'active', currentFocus: suggestion.detail ?? undefined, nextAction: suggestion.title, createdAt, updatedAt: createdAt, sourceDumpId: sourceId });
@@ -251,7 +288,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     setPendingRecording(null);
     setPendingOrganizedDump(null);
     setProcessingError(null);
-  }, [notificationEnabled, refresh, rewardsEnabled]);
+  }, [notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
 
   const confirmOrganizedDump = useCallback(async (organized: OrganizedDump) => {
     if (!pendingRecording) throw new Error('The original recording is no longer available.');
@@ -296,6 +333,30 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     });
   }, [refresh, rewardsEnabled]);
 
+  const updateNotificationAwareItem = useCallback(async (id: string, transform: (item: ThoughtItem) => ThoughtItem, reward?: boolean) => {
+    const item = data.items.find((candidate) => candidate.id === id);
+    if (!item) return;
+    const next: ThoughtItem = { ...transform(item), notificationId: undefined };
+    await cancelItemNotification(item.notificationId);
+
+    try {
+      if (notificationEnabled && shouldScheduleNotification(next)) next.notificationId = await scheduleNotificationForItem(next);
+      await updateThoughtItem(next);
+      if (reward && rewardsEnabled && !item.completed && next.completed) {
+        await saveActivity({ id: createId('activity'), kind: 'item_completed', title: `Completed “${next.title}”`, xp: 5, createdAt: new Date().toISOString(), sourceId: next.id });
+      }
+      await refresh();
+    } catch (error) {
+      await updateThoughtItem({ ...item, notificationId: undefined }).catch(() => undefined);
+      if (error instanceof NotificationPermissionError) {
+        setNotificationEnabledState(false);
+        localStorage.setItem(NOTIFICATIONS_KEY, 'false');
+      }
+      await refresh();
+      throw error;
+    }
+  }, [data.items, notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
+
   const deleteItem = useCallback((id: string) => {
     setData((current) => {
       const item = current.items.find((candidate) => candidate.id === id);
@@ -322,9 +383,9 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     dueDate.setHours(9, 0, 0, 0);
     await cancelItemNotification(item.notificationId);
     const next = { ...item, dueAt: dueDate.toISOString(), dateLabel: 'Tomorrow', time: timeLabelFor(dueDate) };
-    next.notificationId = notificationEnabled ? await scheduleItemNotification(next) : undefined;
+    next.notificationId = notificationEnabled ? await scheduleNotificationForItem(next) : undefined;
     updateItem(id, () => next);
-  }, [data.items, notificationEnabled, updateItem]);
+  }, [data.items, notificationEnabled, scheduleNotificationForItem, updateItem]);
 
   const saveReminder = useCallback(async (existing: ThoughtItem | undefined, input: ReminderInput) => {
     const title = input.title.trim();
@@ -348,11 +409,11 @@ export function ItemsProvider({ children }: PropsWithChildren) {
       recurrence: input.recurrence ? recurrenceForDate(input.recurrence, dueDate.toISOString()) : undefined,
     };
     await cancelItemNotification(existing?.notificationId);
-    item.notificationId = enabled && notificationEnabled ? await scheduleItemNotification(item) : undefined;
+    item.notificationId = enabled && notificationEnabled ? await scheduleNotificationForItem(item) : undefined;
     await updateThoughtItem(item);
     await refresh();
     return item;
-  }, [notificationEnabled, refresh]);
+  }, [notificationEnabled, refresh, scheduleNotificationForItem]);
 
   const addReminder = useCallback((input: ReminderInput) => saveReminder(undefined, input), [saveReminder]);
   const updateReminder = useCallback(async (id: string, input: ReminderInput) => {
@@ -365,10 +426,10 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     if (!item) return;
     await cancelItemNotification(item.notificationId);
     const next: ThoughtItem = { ...item, reminderEnabled: item.reminderEnabled === false, notificationId: undefined };
-    if (next.reminderEnabled && notificationEnabled) next.notificationId = await scheduleItemNotification(next);
+    if (next.reminderEnabled && notificationEnabled) next.notificationId = await scheduleNotificationForItem(next);
     await updateThoughtItem(next);
     await refresh();
-  }, [data.items, notificationEnabled, refresh]);
+  }, [data.items, notificationEnabled, refresh, scheduleNotificationForItem]);
 
   const addProject = useCallback(async (input: Pick<Project, 'name'> & Partial<Pick<Project, 'summary' | 'nextAction'>>) => {
     const now = new Date().toISOString();
@@ -547,18 +608,18 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const value = useMemo<ItemsContextValue>(() => ({
     ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, marketRefreshError, notificationEnabled, rewardsEnabled, totalXp, level,
     setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, setRewardsEnabled, confirmOrganizedDump, queueReviewProposal, confirmReviewProposal, discardReviewProposal,
-    toggleComplete: (id) => updateItem(id, (item) => ({ ...item, completed: !item.completed }), true),
+    toggleComplete: (id) => updateNotificationAwareItem(id, (item) => ({ ...item, completed: !item.completed }), true),
     toggleFavorite: (id) => updateItem(id, (item) => ({ ...item, favorite: !item.favorite })),
     deleteItem, deleteDump,
-    changeCategory: (id, category) => updateItem(id, (item) => ({ ...item, category, completed: category === 'task' ? item.completed ?? false : undefined })),
-    updateTitle: (id, title) => updateItem(id, (item) => ({ ...item, title })),
+    changeCategory: (id, category) => updateNotificationAwareItem(id, (item) => ({ ...item, category, completed: category === 'task' ? item.completed ?? false : undefined })),
+    updateTitle: (id, title) => updateNotificationAwareItem(id, (item) => ({ ...item, title })),
     scheduleTomorrow, addReminder, updateReminder, toggleReminderEnabled,
     addSubtask: (id, title) => updateItem(id, (item) => ({ ...item, subtasks: [...(item.subtasks ?? []), { id: createId('subtask'), title, completed: false }] })),
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
     addProject, addProjectHandoff, addTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
     addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, confirmOccurrence, matchOccurrence, skipOccurrence, postponeOccurrence,
     saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, setWalletSetup, exportData: exportAppData,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateQuote, updateRecurringRule, updateReminder]);
+  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }
@@ -567,4 +628,13 @@ export function useItems() {
   const context = React.use(ItemsContext);
   if (!context) throw new Error('useItems must be used within ItemsProvider');
   return context;
+}
+
+function shouldScheduleNotification(item: ThoughtItem) {
+  return Boolean(
+    item.dueAt
+    && (item.category === 'task' || item.category === 'reminder')
+    && item.reminderEnabled !== false
+    && !item.completed,
+  );
 }

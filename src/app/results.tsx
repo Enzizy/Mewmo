@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
+import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { CategoryIcon, categoryMeta } from '@/components/CategoryIcon';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -13,10 +14,12 @@ import { Category } from '@/types';
 const categories: Category[] = ['task', 'reminder', 'idea', 'note'];
 
 export default function ResultsScreen() {
+  const { showDialog } = useAppDialog();
   const router = useRouter();
   const { items, latestItemIds, toggleComplete, deleteItem, changeCategory, scheduleTomorrow } = useItems();
   const resultItems = items.filter((item) => latestItemIds.includes(item.id));
   const [expanded, setExpanded] = useState<Record<Category, boolean>>({ task: true, reminder: true, idea: true, note: true });
+  const reportUpdateError = (error: unknown) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
 
   return (
     <AppScreen background={colors.paper}>
@@ -33,10 +36,10 @@ export default function ResultsScreen() {
               </Pressable>
               {expanded[category] && categoryItems.map((item) => (
                 <View key={item.id} style={styles.resultRow}>
-                  {category === 'task' && <Pressable onPress={() => toggleComplete(item.id)} style={[styles.checkbox, item.completed && styles.checkboxDone]}>{item.completed && <Feather name="check" size={13} color={colors.surface} />}</Pressable>}
+                  {category === 'task' && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: Boolean(item.completed) }} accessibilityLabel={`Mark ${item.title} ${item.completed ? 'incomplete' : 'complete'}`} onPress={() => void toggleComplete(item.id).catch(reportUpdateError)} style={[styles.checkbox, item.completed && styles.checkboxDone]}>{item.completed && <Feather name="check" size={13} color={colors.surface} />}</Pressable>}
                   <Pressable onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} style={styles.resultMain}><Text style={[styles.resultTitle, item.completed && styles.resultDone]}>{item.title}</Text><Text style={styles.resultMeta}>{item.dateLabel}</Text></Pressable>
-                  <Pressable accessibilityLabel={`Change category for ${item.title}`} onPress={() => changeCategory(item.id, categories[(categories.indexOf(item.category) + 1) % categories.length])} style={styles.rowAction}><Feather name="repeat" size={16} color={colors.secondary} /></Pressable>
-                  <Pressable accessibilityLabel={`Remind me about ${item.title} tomorrow at 9 AM`} onPress={() => scheduleTomorrow(item.id)} style={styles.rowAction}><Feather name="calendar" size={16} color={colors.secondary} /></Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Change category for ${item.title}`} onPress={() => void changeCategory(item.id, categories[(categories.indexOf(item.category) + 1) % categories.length]).catch(reportUpdateError)} style={styles.rowAction}><Feather name="repeat" size={16} color={colors.secondary} /></Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Remind me about ${item.title} tomorrow at 9 AM`} onPress={() => void scheduleTomorrow(item.id).catch(reportUpdateError)} style={styles.rowAction}><Feather name="calendar" size={16} color={colors.secondary} /></Pressable>
                   <Pressable accessibilityLabel={`Delete ${item.title}`} onPress={() => deleteItem(item.id)} style={styles.rowAction}><Feather name="trash-2" size={16} color={colors.danger} /></Pressable>
                 </View>
               ))}

@@ -208,8 +208,8 @@ export function RecurringRuleForm({ initialRule, onDone, onCancel, mode = 'autom
       <Field label={kind === 'investment' ? 'Investment budget each time' : 'Amount each time'} hint="Philippine pesos" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
       <Field label="Days of the month" hint="Comma-separated, for example 15, 30" value={days} onChangeText={setDays} keyboardType="numbers-and-punctuation" placeholder="15, 30" />
       <Field label="Start date" hint="YYYY-MM-DD; older dates can create due entries when saved" value={startsOn} onChangeText={setStartsOn} placeholder="2026-08-24" />
-      {kind === 'investment' ? <Text style={styles.note}>Mewmo may show an estimate using the latest price, but confirmation asks for the exact fractional {asset === 'VOO' ? 'shares' : 'BTC'} and purchase date from your broker. This tracks your plan; it does not place an order.</Text> : null}
-      <Text style={styles.note}>If a month is shorter than the chosen day, Mewmo uses that month’s final day. Nothing changes your wallet until you confirm the pending occurrence.</Text>
+      {kind === 'investment' ? <Text style={styles.note}>LifeDesk may show an estimate using the latest price, but confirmation asks for the exact fractional {asset === 'VOO' ? 'shares' : 'BTC'} and purchase date from your broker. This tracks your plan; it does not place an order.</Text> : null}
+      <Text style={styles.note}>If a month is shorter than the chosen day, LifeDesk uses that month’s final day. Nothing changes your wallet until you confirm the pending occurrence.</Text>
       <SubmitButton label={saving ? 'Saving…' : initialRule ? 'Save changes' : mode === 'subscription' ? 'Add subscription or bill' : 'Add automation'} disabled={saving} onPress={save} />
     </FormCard>
   );

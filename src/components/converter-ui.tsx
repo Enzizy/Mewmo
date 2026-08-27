@@ -23,10 +23,6 @@ export function PendingResult({ title, detail }: { title: string; detail: string
   return <View style={styles.result}><View style={styles.resultIcon}><Feather name="clock" size={18} color={colors.secondary} /></View><View style={styles.resultCopy}><Text style={styles.resultTitle}>{title}</Text><Text style={styles.resultDetail}>{detail}</Text></View></View>;
 }
 
-export function DisabledToolAction({ label }: { label: string }) {
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: true }} disabled style={styles.disabledAction}><Text style={styles.disabledActionText}>{label}</Text></Pressable>;
-}
-
 export function ToolAction({ label, onPress, loading = false, icon }: { label: string; onPress: () => void; loading?: boolean; icon?: React.ComponentProps<typeof Feather>['name'] }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ busy: loading, disabled: loading }} disabled={loading} onPress={onPress} style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}>{loading ? <ActivityIndicator size="small" color={colors.paper} /> : icon ? <Feather name={icon} size={17} color={colors.paper} /> : null}<Text style={styles.actionText}>{loading ? `${label}…` : label}</Text></Pressable>;
 }
@@ -65,8 +61,6 @@ const styles = StyleSheet.create({
   resultCopy: { flex: 1 },
   resultTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
   resultDetail: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
-  disabledAction: { minHeight: 52, marginTop: 22, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.border },
-  disabledActionText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.muted },
   action: { minHeight: 52, marginTop: 22, paddingHorizontal: 18, flexDirection: 'row', gap: 9, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
   actionPressed: { opacity: 0.76 },
   actionText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper },

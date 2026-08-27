@@ -22,7 +22,7 @@ export default function DumpDetailScreen() {
 
   if (!dump) return <AppScreen><ScreenHeader back /><View style={styles.missing}><Text style={styles.title}>Recording not found</Text></View></AppScreen>;
   const extracted = items.filter((item) => item.sourceDumpId === dump.id);
-  const remove = () => showDialog(confirmAction({ title: 'Delete recording?', message: 'The organized records will remain in Mewmo.', confirmLabel: 'Delete recording', onConfirm: () => { deleteDump(dump.id); router.canGoBack() ? router.back() : router.replace('/'); } }));
+  const remove = () => showDialog(confirmAction({ title: 'Delete recording?', message: 'The organized records will remain in LifeDesk.', confirmLabel: 'Delete recording', onConfirm: () => { deleteDump(dump.id); router.canGoBack() ? router.back() : router.replace('/'); } }));
   const toggle = () => status.playing ? player.pause() : player.play();
 
   return (

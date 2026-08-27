@@ -2,10 +2,10 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: ['.env.development.local', '.env'] });
 
-const apiUrl = process.env.EXPO_PUBLIC_MEWMO_API_URL?.trim().replace(/\/$/, '');
-const token = process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN?.trim();
+const apiUrl = (process.env.EXPO_PUBLIC_LIFEDESK_API_URL || process.env.EXPO_PUBLIC_MEWMO_API_URL)?.trim().replace(/\/$/, '');
+const token = (process.env.EXPO_PUBLIC_LIFEDESK_CLIENT_TOKEN || process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN)?.trim();
 
-if (!apiUrl) throw new Error('EXPO_PUBLIC_MEWMO_API_URL is missing.');
+if (!apiUrl) throw new Error('EXPO_PUBLIC_LIFEDESK_API_URL is missing.');
 
 const authorization = token ? { Authorization: `Bearer ${token}` } : {};
 
@@ -13,6 +13,7 @@ const health = await request('/health');
 assert(health.ok === true, 'Health endpoint is not ready.');
 assert(health.configured === true, 'Gemini is not configured on the deployed backend.');
 assert(health.marketConfigured === true, 'Twelve Data is not configured on the deployed backend.');
+assert(health.authConfigured === true, 'LIFEDESK_CLIENT_TOKEN is not configured on the deployed backend.');
 
 const exchange = await request('/exchange-rate?from=USD&to=PHP', { headers: authorization });
 assert(exchange.from === 'USD' && exchange.to === 'PHP' && positive(exchange.rate), 'USD/PHP exchange rate is invalid.');

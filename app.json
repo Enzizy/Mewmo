@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Mewmo",
-    "slug": "mewmo",
-    "scheme": "mewmo",
+    "name": "LifeDesk",
+    "slug": "lifedesk",
+    "scheme": "lifedesk",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/brain-dump-icon.png",
@@ -62,7 +62,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow Mewmo to record your voice notes."
+          "microphonePermission": "Allow LifeDesk to record your voice notes."
         }
       ],
       "expo-notifications",
@@ -71,16 +71,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Mewmo to select images for local conversion, compression, and resizing.",
-          "cameraPermission": "Allow Mewmo to use the camera for AR measurements.",
-          "microphonePermission": "Allow Mewmo to record your voice notes."
+          "photosPermission": "Allow LifeDesk to select images for local conversion, compression, and resizing.",
+          "cameraPermission": "Allow LifeDesk to use the camera for AR measurements.",
+          "microphonePermission": "Allow LifeDesk to record your voice notes."
         }
       ],
       [
         "expo-media-library",
         {
           "photosPermission": false,
-          "savePhotosPermission": "Allow Mewmo to save processed images to your photo library.",
+          "savePhotosPermission": "Allow LifeDesk to save processed images to your photo library.",
           "granularPermissions": []
         }
       ],

@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
@@ -6,6 +6,8 @@ import { buildOrganizerPrompt, normalizeAudioMimeType, responseSchema, validateO
 import { loadTwelveDataQuotes } from './market.mjs';
 import { assistantResponseSchema, assistantSystemInstruction, buildAssistantContents, validateAssistantRequest, validateAssistantResponse } from './personal-assistant.mjs';
 import { loadTwelveDataExchangeRate, validateCurrencyPair } from './exchange-rate.mjs';
+
+dotenv.config({ path: ['.env.development.local', '.env.local', '.env'], quiet: true });
 
 const port = Number(process.env.PORT || 8787);
 const allowedOrigin = process.env.ALLOWED_ORIGIN || '*';
@@ -20,22 +22,26 @@ export async function handleRequest(request, response) {
   const requestUrl = new URL(request.url || '/', 'http://localhost');
   if (request.method === 'OPTIONS') return sendJson(response, 204, null);
   if (request.method === 'GET' && requestUrl.pathname === '/health') {
-    return sendJson(response, 200, { ok: true, configured: Boolean(process.env.GEMINI_API_KEY), marketConfigured: Boolean(process.env.TWELVE_DATA_API_KEY), model });
+    return sendJson(response, 200, { ok: true, configured: Boolean(process.env.GEMINI_API_KEY), marketConfigured: Boolean(process.env.TWELVE_DATA_API_KEY), authConfigured: Boolean(expectedClientToken()), model });
   }
-  if (!isAuthorized(request)) return sendJson(response, 401, { error: 'Unauthorized.' });
+  const authorization = authorizationStatus(request);
+  if (authorization === 'misconfigured') return sendJson(response, 503, { error: 'API access is not configured on the server.' });
+  if (authorization === 'unauthorized') return sendJson(response, 401, { error: 'Unauthorized.' });
+  if (request.method === 'GET' && requestUrl.pathname === '/ready') return sendJson(response, 200, { ok: true });
   if (request.method === 'GET' && requestUrl.pathname === '/market-quotes') {
-    if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
     try {
       if (marketCache && Date.now() - marketCache.cachedAt < 15 * 60 * 1000) return sendJson(response, 200, marketCache.value);
       const value = await loadTwelveDataQuotes({ apiKey: process.env.TWELVE_DATA_API_KEY });
       marketCache = { value, cachedAt: Date.now() };
       return sendJson(response, 200, value);
     } catch (error) {
-      return sendJson(response, 503, { error: error instanceof Error ? error.message : 'Market prices are unavailable.' });
+      console.error(`[market-quotes] ${error instanceof Error ? error.message : 'Provider failure'}`);
+      return sendJson(response, 503, { error: 'Market prices are temporarily unavailable.' });
     }
   }
   if (request.method === 'GET' && requestUrl.pathname === '/exchange-rate') {
-    if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
     let pair;
     try { pair = validateCurrencyPair(requestUrl.searchParams.get('from'), requestUrl.searchParams.get('to')); }
     catch (error) { return sendJson(response, 400, { error: error instanceof Error ? error.message : 'Invalid currency pair.' }); }
@@ -54,7 +60,7 @@ export async function handleRequest(request, response) {
   }
   if (request.method === 'POST' && requestUrl.pathname === '/chat') {
     if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
-    if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
     try {
       const input = validateAssistantRequest(await readJson(request, 512 * 1024));
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -64,12 +70,13 @@ export async function handleRequest(request, response) {
       const output = validateAssistantResponse(JSON.parse(text), validateOrganizedDump);
       return sendJson(response, 200, output);
     } catch (error) {
-      return sendJson(response, 500, { error: error instanceof Error ? error.message : 'The assistant could not answer.' });
+      console.error(`[chat] ${error instanceof Error ? error.message : 'Provider failure'}`);
+      return sendJson(response, 500, { error: 'The assistant could not answer right now. Try again.' });
     }
   }
   if (request.method !== 'POST' || requestUrl.pathname !== '/organize') return sendJson(response, 404, { error: 'Not found.' });
   if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
-  if (!allowRequest(request.socket.remoteAddress || 'unknown')) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+  if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
 
   try {
     const body = await readJson(request, maxBodyBytes);
@@ -81,7 +88,7 @@ export async function handleRequest(request, response) {
     try {
       uploadedFile = await ai.files.upload({
         file: audio,
-        config: { mimeType: input.mimeType, displayName: `mewmo-${Date.now()}` },
+        config: { mimeType: input.mimeType, displayName: `lifedesk-${Date.now()}` },
       });
       if (!uploadedFile.uri) throw new Error('Gemini did not return an audio file URI.');
 
@@ -109,7 +116,7 @@ export async function handleRequest(request, response) {
 
 if (!process.env.VERCEL) {
   http.createServer(handleRequest).listen(port, '0.0.0.0', () => {
-    console.log(`Mewmo AI server listening on http://0.0.0.0:${port}`);
+    console.log(`LifeDesk AI server listening on http://0.0.0.0:${port}`);
     console.log(process.env.GEMINI_API_KEY ? `Gemini model: ${model}` : 'GEMINI_API_KEY is not configured yet.');
   });
 }
@@ -145,6 +152,11 @@ async function readJson(request, limit) {
 
 function allowRequest(address) {
   const now = Date.now();
+  if (requestsByAddress.size > 2_000) {
+    for (const [key, timestamps] of requestsByAddress) {
+      if (!timestamps.some((timestamp) => now - timestamp < 60 * 60 * 1000)) requestsByAddress.delete(key);
+    }
+  }
   const recent = (requestsByAddress.get(address) || []).filter((timestamp) => now - timestamp < 60 * 60 * 1000);
   if (recent.length >= 30) return false;
   recent.push(now);
@@ -158,14 +170,25 @@ function setCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
 }
 
-function isAuthorized(request) {
-  const expected = process.env.MEWMO_CLIENT_TOKEN;
-  if (!expected) return true;
+function authorizationStatus(request) {
+  const expected = expectedClientToken();
+  if (!expected) return 'misconfigured';
   const authorization = request.headers.authorization || '';
   const supplied = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
   const expectedBytes = Buffer.from(expected);
   const suppliedBytes = Buffer.from(supplied);
-  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes);
+  return expectedBytes.length === suppliedBytes.length && timingSafeEqual(expectedBytes, suppliedBytes) ? 'authorized' : 'unauthorized';
+}
+
+function expectedClientToken() {
+  return (process.env.LIFEDESK_CLIENT_TOKEN || process.env.MEWMO_CLIENT_TOKEN || process.env.EXPO_PUBLIC_LIFEDESK_CLIENT_TOKEN || process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN || '').trim();
+}
+
+function rateLimitKey(request, pathname) {
+  const forwarded = process.env.VERCEL ? request.headers['x-forwarded-for'] : undefined;
+  const forwardedValue = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const address = forwardedValue?.split(',')[0]?.trim() || request.socket.remoteAddress || 'unknown';
+  return `${pathname}:${address.slice(0, 100)}`;
 }
 
 function sendJson(response, status, body) {

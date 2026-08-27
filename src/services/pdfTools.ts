@@ -40,7 +40,7 @@ export async function mergePdfs(pdfs: SelectedPdf[]): Promise<ProcessedPdf> {
     const pages = await output.copyPages(input, input.getPageIndices());
     pages.forEach((page) => output.addPage(page));
   }
-  return savePdf(output, `mewmo-merged-${dateStamp()}.pdf`);
+  return savePdf(output, `lifedesk-merged-${dateStamp()}.pdf`);
 }
 
 export async function selectPdfPages(pdf: SelectedPdf, expression: string): Promise<ProcessedPdf> {
@@ -49,7 +49,7 @@ export async function selectPdfPages(pdf: SelectedPdf, expression: string): Prom
   const output = await PDFDocument.create();
   const pages = await output.copyPages(input, indices);
   pages.forEach((page) => output.addPage(page));
-  return savePdf(output, `mewmo-pages-${dateStamp()}.pdf`);
+  return savePdf(output, `lifedesk-pages-${dateStamp()}.pdf`);
 }
 
 export async function imagesToPdf(): Promise<ProcessedPdf | null> {
@@ -74,7 +74,7 @@ export async function imagesToPdf(): Promise<ProcessedPdf | null> {
       if (Platform.OS !== 'web') await FileSystem.deleteAsync(jpeg.uri, { idempotent: true });
     }
   }
-  return savePdf(output, `mewmo-images-${dateStamp()}.pdf`);
+  return savePdf(output, `lifedesk-images-${dateStamp()}.pdf`);
 }
 
 export async function exportPdf(pdf: ProcessedPdf) {

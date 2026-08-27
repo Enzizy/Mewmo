@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { nextReminderDate, recurrenceForDate, reminderDateTime } from './reminders.ts';
+import { nextReminderDate, recurrenceForDate, reminderDateTime, reminderOccurrencesBetween } from './reminders.ts';
 
 test('finds the next monthly reminder occurrence', () => {
   const dueAt = new Date(2026, 7, 15, 9, 0).toISOString();
@@ -22,4 +22,17 @@ test('validates local date and time entry', () => {
   assert.ok(reminderDateTime('2026-08-30', '09:15'));
   assert.equal(reminderDateTime('2026-02-30', '09:15'), null);
   assert.equal(reminderDateTime('2026-08-30', '25:00'), null);
+});
+
+test('expands every recurring reminder occurrence inside a calendar range', () => {
+  const dueAt = new Date(2026, 7, 1, 9, 0).toISOString();
+  const item = { id: 'r1', category: 'reminder', title: 'Daily check-in', dateLabel: '', dueAt, recurrence: recurrenceForDate('daily', dueAt), reminderEnabled: true };
+  const occurrences = reminderOccurrencesBetween(item, new Date(2026, 7, 1), new Date(2026, 7, 4));
+  assert.deepEqual(occurrences.map((date) => [date.getDate(), date.getHours()]), [[1, 9], [2, 9], [3, 9]]);
+});
+
+test('does not expand paused reminders', () => {
+  const dueAt = new Date(2026, 7, 1, 9, 0).toISOString();
+  const item = { id: 'r1', category: 'reminder', title: 'Paused', dateLabel: '', dueAt, recurrence: recurrenceForDate('daily', dueAt), reminderEnabled: false };
+  assert.deepEqual(reminderOccurrencesBetween(item, new Date(2026, 7, 1), new Date(2026, 7, 4)), []);
 });

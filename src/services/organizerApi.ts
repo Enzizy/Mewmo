@@ -4,33 +4,40 @@ import { OrganizedDump, PendingRecording } from '@/types';
 const requestTimeoutMs = 120_000;
 
 export function getOrganizerApiUrl() {
-  return (process.env.EXPO_PUBLIC_MEWMO_API_URL ?? process.env.EXPO_PUBLIC_BRAIN_DUMP_API_URL ?? process.env.EXPO_PUBLIC_GATHER_API_URL)?.trim().replace(/\/$/, '') ?? '';
+  return (process.env.EXPO_PUBLIC_LIFEDESK_API_URL ?? process.env.EXPO_PUBLIC_MEWMO_API_URL ?? process.env.EXPO_PUBLIC_BRAIN_DUMP_API_URL ?? process.env.EXPO_PUBLIC_GATHER_API_URL)?.trim().replace(/\/$/, '') ?? '';
 }
 
 export function getOrganizerApiHeaders(additionalHeaders: Record<string, string> = {}) {
-  const token = process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN?.trim();
+  const token = (process.env.EXPO_PUBLIC_LIFEDESK_CLIENT_TOKEN ?? process.env.EXPO_PUBLIC_MEWMO_CLIENT_TOKEN)?.trim();
   return token ? { ...additionalHeaders, Authorization: `Bearer ${token}` } : additionalHeaders;
 }
 
 export async function checkOrganizerHealth() {
   const apiUrl = getOrganizerApiUrl();
   if (!apiUrl) return { ok: false, configured: false, message: 'API address is not configured.' };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetch(`${apiUrl}/health`, { headers: getOrganizerApiHeaders() });
-    const body = await response.json() as { ok?: boolean; configured?: boolean };
-    return {
-      ok: response.ok && body.ok === true,
-      configured: body.configured === true,
-      message: body.configured ? 'Gemini is ready.' : 'Server found, but its Gemini key is missing.',
-    };
-  } catch {
-    return { ok: false, configured: true, message: 'Cannot reach the AI server.' };
+    const response = await fetch(`${apiUrl}/health`, { headers: getOrganizerApiHeaders(), signal: controller.signal });
+    const body = await response.json() as { ok?: boolean; configured?: boolean; authConfigured?: boolean };
+    if (!response.ok || body.ok !== true) return { ok: false, configured: true, message: 'The AI server health check failed.' };
+    if (!body.configured) return { ok: false, configured: false, message: 'Server found, but its Gemini key is missing.' };
+    if (!body.authConfigured) return { ok: false, configured: true, message: 'Server found, but API access protection is missing.' };
+
+    const ready = await fetch(`${apiUrl}/ready`, { headers: getOrganizerApiHeaders(), signal: controller.signal });
+    if (ready.status === 401) return { ok: false, configured: true, message: 'The app access token does not match the server.' };
+    if (!ready.ok) return { ok: false, configured: true, message: 'The protected AI connection is not ready.' };
+    return { ok: true, configured: true, message: 'Gemini and protected API access are ready.' };
+  } catch (error) {
+    return { ok: false, configured: true, message: error instanceof Error && error.name === 'AbortError' ? 'AI server check timed out.' : 'Cannot reach the AI server.' };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
 export async function organizeRecording(recording: PendingRecording): Promise<OrganizedDump> {
   const apiUrl = getOrganizerApiUrl();
-  if (!apiUrl) throw new Error('AI server address is missing. Add EXPO_PUBLIC_MEWMO_API_URL to .env and restart Expo.');
+  if (!apiUrl) throw new Error('AI server address is missing. Add EXPO_PUBLIC_LIFEDESK_API_URL to .env and restart Expo.');
   const audioBase64 = await FileSystem.readAsStringAsync(recording.uri, { encoding: FileSystem.EncodingType.Base64 });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);

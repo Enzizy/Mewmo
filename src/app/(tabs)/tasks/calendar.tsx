@@ -10,11 +10,11 @@ import { colors, fonts, radius } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { ReminderFrequency, ThoughtItem } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
-import { localDateInput, nextReminderDate, reminderDateTime } from '@/utils/reminders';
+import { localDateInput, reminderDateTime, reminderOccurrencesBetween } from '@/utils/reminders';
 
 type RepeatChoice = 'none' | ReminderFrequency;
 const repeatChoices: { value: RepeatChoice; label: string }[] = [
-  { value: 'none', label: 'Once' }, { value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' },
+  { value: 'none', label: 'Once' }, { value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }, { value: 'yearly', label: 'Yearly' },
 ];
 
 export default function CalendarScreen() {
@@ -27,9 +27,7 @@ export default function CalendarScreen() {
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 1);
   const reminderEntries = items
     .filter((item) => item.category === 'reminder')
-    .map((item) => ({ item, date: nextReminderDate(item, new Date(monthStart.getTime() - 1)) }))
-    .filter((entry): entry is { item: ThoughtItem; date: Date } => Boolean(entry.date))
-    .filter((entry) => entry.date < monthEnd)
+    .flatMap((item) => reminderOccurrencesBetween(item, monthStart, monthEnd).map((date) => ({ item, date })))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
   const selectedEntries = reminderEntries.filter((entry) => localDateInput(entry.date) === selected);
 
@@ -51,7 +49,7 @@ export default function CalendarScreen() {
       <View style={styles.agendaHeader}><View><Text style={styles.agendaTitle}>{selected === localDateInput() ? 'Today' : new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'short', day: 'numeric' }).format(new Date(`${selected}T12:00:00`))}</Text><Text style={styles.agendaDetail}>{selectedEntries.length ? `${selectedEntries.length} scheduled` : 'No reminders scheduled'}</Text></View></View>
       <View style={styles.list}>
         {selectedEntries.map(({ item, date }) => <View key={item.id} style={styles.row}><View style={[styles.bell, item.reminderEnabled === false && styles.bellPaused]}><Feather name="bell" size={17} color={colors.ink} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{new Intl.DateTimeFormat('en-PH', { timeStyle: 'short' }).format(date)}{item.recurrence ? ` · Repeats ${item.recurrence.frequency}` : ''}</Text></View><Host accessible accessibilityLabel={`${item.reminderEnabled === false ? 'Enable' : 'Pause'} ${item.title}`} accessibilityRole="switch" accessibilityState={{ checked: item.reminderEnabled !== false }} matchContents><Switch value={item.reminderEnabled !== false} onValueChange={() => toggleReminderEnabled(item.id).catch((error) => showDialog({ title: 'Could not update reminder', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' }))} /></Host><Pressable accessibilityLabel={`Edit ${item.title}`} onPress={() => setEditor(item)} style={styles.rowAction}><Feather name="edit-3" size={16} color={colors.secondary} /></Pressable><Pressable accessibilityLabel={`Delete ${item.title}`} onPress={() => remove(item)} style={styles.rowAction}><Feather name="trash-2" size={16} color={colors.muted} /></Pressable></View>)}
-        {!selectedEntries.length ? <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="calendar" size={20} color={colors.muted} /></View><View style={styles.rowMain}><Text style={styles.emptyTitle}>This day is open</Text><Text style={styles.emptyText}>Add a reminder manually or ask Mewmo during voice capture.</Text></View></View> : null}
+        {!selectedEntries.length ? <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="calendar" size={20} color={colors.muted} /></View><View style={styles.rowMain}><Text style={styles.emptyTitle}>This day is open</Text><Text style={styles.emptyText}>Add a reminder manually or ask LifeDesk during voice capture.</Text></View></View> : null}
       </View>
     </AppScreen>
   );

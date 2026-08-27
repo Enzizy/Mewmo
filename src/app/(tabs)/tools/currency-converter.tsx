@@ -69,7 +69,7 @@ export default function CurrencyConverterScreen() {
   return <AppScreen tabbed>
     <ScreenHeader back />
     <PageHeader title="Currency Converter" supporting="Convert with a current rate and a visible update time." />
-    <ToolNotice icon="wifi">Rates come from Twelve Data through your private Mewmo server. Valid pairs are cached for 10 minutes to protect your free API allowance.</ToolNotice>
+    <ToolNotice icon="wifi">Rates come from Twelve Data through your private LifeDesk server. Valid pairs are cached for 10 minutes to protect your free API allowance.</ToolNotice>
     <ValueField label={`Amount in ${from}`} value={amount} onChangeText={(next) => { setAmount(next); setError(''); }} placeholder="0.00" />
     <OptionStrip label="From currency" values={currencies} selected={from} onSelect={selectFrom} />
     <SwapButton onPress={swap} label="Swap source and destination currencies" />

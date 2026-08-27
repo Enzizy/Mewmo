@@ -1,10 +1,10 @@
-# Mewmo system audit and finance flow
+# LifeDesk system audit and finance flow
 
 Date: 2026-08-24
 
 ## Purpose
 
-This audit records the current product structure, the problems found, the decisions made, and the cleanup performed while simplifying Mewmo. The main goal is to make common financial actions obvious without risking existing on-device records.
+This audit records the current product structure, the problems found, the decisions made, and the cleanup performed while simplifying LifeDesk. The main goal is to make common financial actions obvious without risking existing on-device records.
 
 ## What was confusing
 
@@ -63,7 +63,7 @@ Each action opens the page that owns that record and presents a labeled form. Th
 - Day 30 or 31 becomes the last valid day in shorter months.
 - Due rules post once when the app opens on or after the scheduled date.
 - Pausing or deleting a rule keeps already-posted history.
-- Recurring investments require an explicit BTC quantity or VOO share quantity. Mewmo does not invent a purchase quantity from a changing quote.
+- Recurring investments require an explicit BTC quantity or VOO share quantity. LifeDesk does not invent a purchase quantity from a changing quote.
 
 ### Investment value behavior
 
@@ -78,7 +78,7 @@ Each action opens the page that owns that record and presents a labeled form. Th
 - No seeded salary, wallet, investment, bill, grocery, task, or project records remain in the application source; a fresh install starts clean.
 - Database migrations are retained because existing installations need the complete migration chain.
 - The legacy `brain-dump.db` filename is retained. Renaming it without a native file migration would make an existing installation appear empty.
-- Legacy preference keys are migrated to `mewmo.*` keys and then removed; their values are preserved.
+- Legacy preference keys are migrated to the original `mewmo.*` compatibility keys and then removed; those stable internal keys preserve existing user data after the LifeDesk rename.
 - Deleting a financial activity record is an explicit user action with confirmation. If it represents an investment purchase, its linked lot and cash movement are removed together.
 
 ## Cleanup inventory

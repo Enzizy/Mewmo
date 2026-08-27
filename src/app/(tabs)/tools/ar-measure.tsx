@@ -44,7 +44,7 @@ export default function ArMeasureScreen() {
     setPermission('requesting');
     const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
       title: 'Use camera for AR Measure',
-      message: 'Mewmo uses the camera locally to detect surfaces and estimate the distance between two points.',
+      message: 'LifeDesk uses the camera locally to detect surfaces and estimate the distance between two points.',
       buttonPositive: 'Allow camera',
       buttonNegative: 'Not now',
     });
@@ -118,7 +118,7 @@ function UnavailableScreen() {
     <View style={styles.introIcon}><Feather name="maximize-2" size={26} color={colors.ink} /></View>
     <Text style={styles.pageTitle}>Measure with your camera</Text>
     <Text style={styles.pageSupport}>Pin a start and end point to estimate a real-world length in centimeters, inches, or meters.</Text>
-    <View style={styles.noticeCard}><Feather name={web ? 'smartphone' : 'download'} size={19} color={colors.accent} /><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{web ? 'Open this on Android' : 'Installed build required'}</Text><Text style={styles.noticeText}>{web ? 'AR measurement uses Android camera hardware and cannot run in a browser.' : 'Expo Go cannot load Mewmo’s custom ARCore module. Install your next Mewmo APK to use this tool.'}</Text></View></View>
+    <View style={styles.noticeCard}><Feather name={web ? 'smartphone' : 'download'} size={19} color={colors.accent} /><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{web ? 'Open this on Android' : 'Installed build required'}</Text><Text style={styles.noticeText}>{web ? 'AR measurement uses Android camera hardware and cannot run in a browser.' : 'Expo Go cannot load LifeDesk’s custom ARCore module. Install your next LifeDesk APK to use this tool.'}</Text></View></View>
     <HowItWorks />
     <View style={styles.freeCard}><Feather name="shield" size={18} color={colors.green} /><Text style={styles.freeText}>Runs locally. No account, card, subscription, upload, or paid API is required.</Text></View>
   </AppScreen>;
@@ -130,7 +130,7 @@ function PermissionScreen({ permission, onRequest }: { permission: PermissionSta
     <ScreenHeader back />
     <View style={styles.introIcon}><Feather name="camera" size={26} color={colors.ink} /></View>
     <Text style={styles.pageTitle}>Camera access, only while measuring</Text>
-    <Text style={styles.pageSupport}>Mewmo needs the camera to find surfaces. Frames stay on your phone and are never uploaded.</Text>
+    <Text style={styles.pageSupport}>LifeDesk needs the camera to find surfaces. Frames stay on your phone and are never uploaded.</Text>
     <HowItWorks />
     <Pressable accessibilityRole="button" disabled={permission === 'requesting'} onPress={denied ? () => void Linking.openSettings() : onRequest} style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}><Feather name={denied ? 'settings' : 'camera'} size={19} color={colors.paper} /><Text style={styles.permissionButtonText}>{permission === 'requesting' ? 'Requesting permission…' : denied ? 'Open Android settings' : 'Enable camera'}</Text></Pressable>
     <Text style={styles.permissionFootnote}>You can revoke camera access anytime in Android settings.</Text>

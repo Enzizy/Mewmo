@@ -8,7 +8,7 @@ import { ItemRow } from '@/components/ItemRow';
 import { PageHeader } from '@/components/page-header';
 import { colors, fonts } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
-import { ThoughtItem } from '@/types';
+import { filterTaskItems } from '@/utils/task-filters';
 
 type ViewMode = 'focus' | 'upcoming' | 'projects' | 'inbox';
 const modes: { value: ViewMode; label: string }[] = [
@@ -27,11 +27,11 @@ export default function TasksScreen() {
   const [projectName, setProjectName] = useState('');
   const [nextAction, setNextAction] = useState('');
   const [savingProject, setSavingProject] = useState(false);
-  const filtered = useMemo(() => filterItems(items, mode), [items, mode]);
+  const filtered = useMemo(() => mode === 'projects' ? [] : filterTaskItems(items, mode), [items, mode]);
   const activeProjects = projects.filter((project) => project.status === 'active');
 
   const createProject = async () => {
-    if (!projectName.trim()) return showDialog({ title: 'Add a project name', message: 'Name the outcome or area you want Mewmo to remember.', tone: 'warning' });
+    if (!projectName.trim()) return showDialog({ title: 'Add a project name', message: 'Name the outcome or area you want LifeDesk to remember.', tone: 'warning' });
     setSavingProject(true);
     try {
       const project = await addProject({ name: projectName, nextAction });
@@ -59,13 +59,6 @@ export default function TasksScreen() {
   );
 }
 
-function filterItems(items: ThoughtItem[], mode: ViewMode) {
-  const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-  if (mode === 'focus') return items.filter((item) => !item.completed && (item.category === 'task' || item.category === 'reminder') && (!item.dueAt || new Date(item.dueAt) <= todayEnd));
-  if (mode === 'upcoming') return items.filter((item) => !item.completed && item.dueAt && new Date(item.dueAt) > todayEnd).sort((a, b) => Date.parse(a.dueAt ?? '') - Date.parse(b.dueAt ?? ''));
-  if (mode === 'inbox') return items.filter((item) => item.category === 'idea' || item.category === 'note' || (!item.dueAt && item.category === 'reminder'));
-  return [];
-}
 function modeTitle(mode: ViewMode) { return mode === 'focus' ? 'Needs attention' : mode === 'upcoming' ? 'Coming up' : mode === 'projects' ? 'Active projects' : 'Captured inbox'; }
 function EmptyState({ title, detail }: { title: string; detail: string }) { return <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="inbox" size={21} color={colors.muted} /></View><View style={styles.emptyMain}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text></View></View>; }
 

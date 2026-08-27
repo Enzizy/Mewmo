@@ -36,7 +36,7 @@ export default function RecordScreen() {
     const start = async () => {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        showDialog({ title: 'Microphone access needed', message: 'Mewmo needs microphone permission to record. You can enable it in Android settings.', tone: 'warning' });
+        showDialog({ title: 'Microphone access needed', message: 'LifeDesk needs microphone permission to record. You can enable it in Android settings.', tone: 'warning' });
         leave();
         return;
       }
