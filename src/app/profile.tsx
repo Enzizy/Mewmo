@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
 import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
@@ -15,6 +16,7 @@ import { checkOrganizerHealth, getOrganizerApiUrl } from '@/services/organizerAp
 import { useItems } from '@/store/ItemsContext';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const { showDialog } = useAppDialog();
   const [aiStatus, setAiStatus] = useState('Checking...');
   const [notificationSaving, setNotificationSaving] = useState(false);
@@ -71,6 +73,7 @@ export default function ProfileScreen() {
       <Section title="Preferences">
         <Setting icon="bell" label="Notifications" detail={notificationSaving ? 'Updating reminder schedules…' : notificationRuntimeAvailable ? 'Due-date reminders on this device' : 'Available in the installed mobile app'}><Switch accessibilityLabel="Notifications" accessibilityHint="Schedules or cancels due-date reminders on this device" disabled={!notificationRuntimeAvailable || notificationSaving} value={notificationRuntimeAvailable && notificationEnabled} onValueChange={(enabled) => void changeNotifications(enabled)} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
         <Setting icon="award" label="Momentum and XP" detail="Optional, never punitive"><Switch accessibilityLabel="Momentum and XP" value={rewardsEnabled} onValueChange={setRewardsEnabled} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
+        <Action icon="layout" label="Android widget" detail="Choose whether the home-screen widget may show your balance" onPress={() => router.push('/home-customize')} />
       </Section>
 
       <Section title="Data and privacy">

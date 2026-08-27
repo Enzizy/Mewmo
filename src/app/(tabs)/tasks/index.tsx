@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
-import { Href, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { Href, useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
@@ -21,14 +21,21 @@ const modes: { value: ViewMode; label: string }[] = [
 export default function TasksScreen() {
   const { showDialog } = useAppDialog();
   const router = useRouter();
-  const { items, projects, addProject } = useItems();
+  const params = useLocalSearchParams<{ action?: string }>();
+  const { items, projects, addProject, addTask } = useItems();
   const [mode, setMode] = useState<ViewMode>('focus');
   const [addingProject, setAddingProject] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [nextAction, setNextAction] = useState('');
   const [savingProject, setSavingProject] = useState(false);
+  const [addingTask, setAddingTask] = useState(params.action === 'add');
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDetail, setTaskDetail] = useState('');
+  const [savingTask, setSavingTask] = useState(false);
   const filtered = useMemo(() => mode === 'projects' ? [] : filterTaskItems(items, mode), [items, mode]);
   const activeProjects = projects.filter((project) => project.status === 'active');
+
+  useEffect(() => { if (params.action === 'add') setAddingTask(true); }, [params.action]);
 
   const createProject = async () => {
     if (!projectName.trim()) return showDialog({ title: 'Add a project name', message: 'Name the outcome or area you want LifeDesk to remember.', tone: 'warning' });
@@ -43,11 +50,23 @@ export default function TasksScreen() {
     }
   };
 
+  const createTask = async () => {
+    if (!taskTitle.trim()) return showDialog({ title: 'Add a task title', message: 'Describe the next action you want to remember.', tone: 'warning' });
+    setSavingTask(true);
+    try {
+      await addTask({ title: taskTitle, detail: taskDetail });
+      setTaskTitle(''); setTaskDetail(''); setAddingTask(false); setMode('inbox');
+    } catch (error) {
+      showDialog({ title: 'Could not create task', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
+    } finally { setSavingTask(false); }
+  };
+
   return (
-    <AppScreen tabbed assistant={!addingProject}>
-      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={styles.iconButton}><Feather name="calendar" size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Search tasks and captured items" onPress={() => router.push('/tasks/search')} style={styles.iconButton}><Feather name="search" size={20} color={colors.ink} /></Pressable></View>} />
+    <AppScreen tabbed assistant={!addingProject && !addingTask}>
+      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Add a task" onPress={() => setAddingTask((value) => !value)} style={styles.iconButton}><Feather name={addingTask ? 'x' : 'plus'} size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={styles.iconButton}><Feather name="calendar" size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Search tasks and captured items" onPress={() => router.push('/tasks/search')} style={styles.iconButton}><Feather name="search" size={20} color={colors.ink} /></Pressable></View>} />
       <View accessibilityRole="tablist" style={styles.tabs}>{modes.map((item) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === item.value }} key={item.value} onPress={() => setMode(item.value)} style={[styles.tab, mode === item.value && styles.tabActive]}><Text numberOfLines={1} style={[styles.tabText, mode === item.value && styles.tabTextActive]}>{item.label}</Text></Pressable>)}</View>
 
+      {addingTask ? <View style={styles.projectForm}><View><Text style={styles.fieldLabel}>Task</Text><TextInput autoFocus value={taskTitle} onChangeText={setTaskTitle} placeholder="What needs to be done?" placeholderTextColor={colors.muted} returnKeyType="next" style={styles.input} /></View><View><Text style={styles.fieldLabel}>Notes (optional)</Text><TextInput value={taskDetail} onChangeText={setTaskDetail} placeholder="Helpful context" placeholderTextColor={colors.muted} style={styles.input} /></View><Pressable accessibilityRole="button" disabled={savingTask} onPress={createTask} style={[styles.createButton, savingTask && styles.disabled]}><Text style={styles.createButtonText}>{savingTask ? 'Adding…' : 'Add task'}</Text><Feather name="check" size={18} color={colors.paper} /></Pressable></View> : null}
       <View style={styles.contextRow}><Text style={styles.contextTitle}>{modeTitle(mode)}</Text><View style={styles.contextActions}>{mode === 'projects' ? <Pressable accessibilityRole="button" onPress={() => setAddingProject((value) => !value)} style={styles.newProject}><Feather name={addingProject ? 'x' : 'plus'} size={16} color={colors.ink} /><Text style={styles.newProjectText}>{addingProject ? 'Close' : 'New project'}</Text></Pressable> : null}<Text style={styles.count}>{mode === 'projects' ? activeProjects.length : filtered.length}</Text></View></View>
       {mode === 'projects' && addingProject ? <View style={styles.projectForm}><View><Text style={styles.fieldLabel}>Project name</Text><TextInput value={projectName} onChangeText={setProjectName} placeholder="Portfolio refresh" placeholderTextColor={colors.muted} style={styles.input} /></View><View><Text style={styles.fieldLabel}>First next action</Text><TextInput value={nextAction} onChangeText={setNextAction} placeholder="Choose the first useful step" placeholderTextColor={colors.muted} style={styles.input} /></View><Pressable accessibilityRole="button" disabled={savingProject} onPress={createProject} style={[styles.createButton, savingProject && styles.disabled]}><Text style={styles.createButtonText}>{savingProject ? 'Creating…' : 'Create project'}</Text><Feather name="arrow-right" size={18} color={colors.paper} /></Pressable></View> : null}
       <View style={styles.list}>

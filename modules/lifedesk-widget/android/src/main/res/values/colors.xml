@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <color name="lifedesk_widget_background">#FAFAFA</color>
+  <color name="lifedesk_widget_ink">#111111</color>
+  <color name="lifedesk_widget_secondary">#666666</color>
+  <color name="lifedesk_widget_border">#DDDDDD</color>
+  <color name="lifedesk_widget_white">#FFFFFF</color>
+</resources>

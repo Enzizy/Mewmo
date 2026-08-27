@@ -1,6 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
-import { useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
@@ -19,10 +20,12 @@ const repeatChoices: { value: RepeatChoice; label: string }[] = [
 
 export default function CalendarScreen() {
   const { showDialog } = useAppDialog();
+  const params = useLocalSearchParams<{ action?: string }>();
   const { items, addReminder, updateReminder, toggleReminderEnabled, deleteItem, notificationEnabled } = useItems();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => localDateInput());
-  const [editor, setEditor] = useState<ThoughtItem | 'new' | null>(null);
+  const [editor, setEditor] = useState<ThoughtItem | 'new' | null>(params.action === 'add' ? 'new' : null);
+  useEffect(() => { if (params.action === 'add') setEditor('new'); }, [params.action]);
   const monthStart = startOfMonth(month);
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 1);
   const reminderEntries = items

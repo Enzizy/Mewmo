@@ -14,6 +14,8 @@ LifeDesk is an Android-first, local-first personal command center built with Exp
 - Monthly category budgets such as Groceries
 - Grounded Gemini chat for questions about confirmed personal records
 - Optional server-side Twelve Data refresh for BTC and VOO values in both PHP and USD
+- Android home-screen overview widget and launcher shortcuts for capture, expenses, tasks, and reminders
+- Notification actions for completing tasks or snoozing tasks and reminders
 - Local JSON export from Profile
 
 ## One-time setup
@@ -48,6 +50,8 @@ npx expo start --clear
 ```
 
 Open the latest Expo Go app and scan the QR code shown by Expo. Grant microphone and notification permission when prompted. If Windows Firewall asks, allow Node.js on private networks so the phone can reach port 8787. Profile shows the current Gemini connection state.
+
+Expo Go can run the app UI, but it cannot load LifeDesk's custom Android widget or AR modules. Install a new APK/development build to test those native features. After installing and opening LifeDesk once, long-press the Android home screen, choose **Widgets**, then add **LifeDesk Overview**. Long-pressing the LifeDesk launcher icon also exposes quick actions. Widget balances are hidden by default and can be enabled under Profile → Android widget.
 
 ## Data and finance behavior
 

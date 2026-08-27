@@ -1,5 +1,5 @@
 import 'react-native-gesture-handler';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
@@ -13,38 +13,26 @@ import {
   InstrumentSans_700Bold,
   useFonts,
 } from '@expo-google-fonts/instrument-sans';
-import { ItemsProvider } from '@/store/ItemsContext';
+import { ItemsProvider, useItems } from '@/store/ItemsContext';
 import { AppDialogProvider } from '@/components/AppDialog';
+import { LifeDeskNativeSync } from '@/components/LifeDeskNativeSync';
 import { colors } from '@/constants/theme';
-import { configureNotifications, subscribeToNotificationResponses } from '@/services/notifications';
+import { configureNotifications, scheduleSnoozeNotification, subscribeToNotificationResponses } from '@/services/notifications';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 export default function RootLayout() {
-  const router = useRouter();
   const [loaded] = useFonts({ InstrumentSans_400Regular, InstrumentSans_500Medium, InstrumentSans_600SemiBold, InstrumentSans_700Bold });
   useEffect(() => { if (loaded) SplashScreen.hideAsync(); }, [loaded]);
   useEffect(() => { configureNotifications().catch(() => undefined); }, []);
-  useEffect(() => {
-    let unsubscribe: () => void = () => undefined;
-    let mounted = true;
-    subscribeToNotificationResponses((itemId) => {
-      router.push({ pathname: '/item/[id]', params: { id: itemId } });
-    }).then((cleanup) => {
-      if (mounted) unsubscribe = cleanup;
-      else cleanup();
-    }).catch(() => undefined);
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
-  }, [router]);
   if (!loaded) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <ItemsProvider>
+          <LifeDeskNativeSync />
+          <NotificationBridge />
           <AppDialogProvider>
             <StatusBar style="dark" />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
@@ -61,4 +49,39 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+function NotificationBridge() {
+  const router = useRouter();
+  const { items, toggleComplete } = useItems();
+  const itemsRef = useRef(items);
+  const toggleCompleteRef = useRef(toggleComplete);
+  useEffect(() => { itemsRef.current = items; }, [items]);
+  useEffect(() => { toggleCompleteRef.current = toggleComplete; }, [toggleComplete]);
+
+  useEffect(() => {
+    let unsubscribe: () => void = () => undefined;
+    let mounted = true;
+    subscribeToNotificationResponses((itemId, action) => {
+      const item = itemsRef.current.find((candidate) => candidate.id === itemId);
+      if (action === 'complete' && item && !item.completed) {
+        void toggleCompleteRef.current(itemId).catch(() => undefined);
+        return;
+      }
+      if (action === 'snooze' && item) {
+        void scheduleSnoozeNotification(item).catch(() => undefined);
+        return;
+      }
+      router.push({ pathname: '/item/[id]', params: { id: itemId } });
+    }).then((cleanup) => {
+      if (mounted) unsubscribe = cleanup;
+      else cleanup();
+    }).catch(() => undefined);
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [router]);
+
+  return null;
 }

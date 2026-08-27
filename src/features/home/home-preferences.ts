@@ -1,4 +1,4 @@
-import { HomePreferences, HomeShortcutId, HomeWidgetId } from '@/types';
+import type { HomePreferences, HomeShortcutId, HomeWidgetId } from '@/types';
 
 export const HOME_WIDGETS: { id: HomeWidgetId; title: string; detail: string }[] = [
   { id: 'review', title: 'Review inbox', detail: 'Pending money and AI proposals' },
@@ -27,6 +27,7 @@ export const DEFAULT_HOME_PREFERENCES: HomePreferences = {
   hidden: [],
   compact: ['weather', 'schedule', 'attention', 'coming-up'],
   balancesVisible: true,
+  widgetBalancesVisible: false,
   shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'],
 };
 
@@ -40,6 +41,7 @@ export function normalizeHomePreferences(value?: Partial<HomePreferences> | null
     hidden: [...new Set((value?.hidden ?? []).filter((id): id is HomeWidgetId => validWidgets.has(id)))],
     compact: [...new Set((value?.compact ?? []).filter((id): id is HomeWidgetId => validWidgets.has(id)))],
     balancesVisible: value?.balancesVisible !== false,
+    widgetBalancesVisible: value?.widgetBalancesVisible === true,
     shortcuts: [...new Set((value?.shortcuts ?? []).filter((id): id is HomeShortcutId => validShortcuts.has(id)))].slice(0, 4),
   };
 }

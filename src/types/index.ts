@@ -205,6 +205,7 @@ export type HomePreferences = {
   hidden: HomeWidgetId[];
   compact: HomeWidgetId[];
   balancesVisible: boolean;
+  widgetBalancesVisible: boolean;
   shortcuts: HomeShortcutId[];
 };
 

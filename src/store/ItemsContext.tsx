@@ -72,6 +72,7 @@ import { localDateKey, localNoonIso, normalizeMonthlyDays } from '@/utils/recurr
 import { recurrenceForDate } from '@/utils/reminders';
 
 type ReminderInput = { title: string; detail?: string; dueAt: string; recurrence?: ReminderFrequency | null; enabled?: boolean };
+type TaskInput = { title: string; detail?: string };
 type RecurringRuleInput = { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; startsOn?: string };
 type SavingsGoalInput = { name: string; targetMinor: number; savedMinor: number; paydayContributionMinor: number; targetDate?: string; active?: boolean };
 type OccurrenceConfirmationInput = { amountMinor: number; actualDate: string; quantity?: string; feesMinor?: number; note?: string; updateFutureAmount?: boolean };
@@ -103,6 +104,7 @@ type ItemsContextValue = AppDataSnapshot & {
   changeCategory: (id: string, category: Category) => Promise<void>;
   updateTitle: (id: string, title: string) => Promise<void>;
   scheduleTomorrow: (id: string) => Promise<void>;
+  addTask: (input: TaskInput) => Promise<ThoughtItem>;
   addReminder: (input: ReminderInput) => Promise<ThoughtItem>;
   updateReminder: (id: string, input: ReminderInput) => Promise<void>;
   toggleReminderEnabled: (id: string) => Promise<void>;
@@ -133,7 +135,7 @@ type ItemsContextValue = AppDataSnapshot & {
   exportData: () => Promise<string>;
 };
 
-const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
+const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, widgetBalancesVisible: false, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
 const NOTIFICATIONS_KEY = 'mewmo.notifications';
 const REWARDS_KEY = 'mewmo.rewards';
 const LEGACY_NOTIFICATIONS_KEY = 'brain-dump.notifications';
@@ -387,6 +389,27 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     updateItem(id, () => next);
   }, [data.items, notificationEnabled, scheduleNotificationForItem, updateItem]);
 
+  const addTask = useCallback(async (input: TaskInput) => {
+    const title = input.title.trim();
+    if (!title) throw new Error('Add a task title.');
+    const createdAt = new Date().toISOString();
+    const item: ThoughtItem = {
+      id: createId('task'),
+      category: 'task',
+      title,
+      detail: input.detail?.trim() || undefined,
+      dueAt: null,
+      createdAt,
+      dateLabel: dateLabelFor(createdAt),
+      time: timeLabelFor(createdAt),
+      completed: false,
+      subtasks: [],
+    };
+    await updateThoughtItem(item);
+    await refresh();
+    return item;
+  }, [refresh]);
+
   const saveReminder = useCallback(async (existing: ThoughtItem | undefined, input: ReminderInput) => {
     const title = input.title.trim();
     const dueDate = new Date(input.dueAt);
@@ -613,13 +636,13 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     deleteItem, deleteDump,
     changeCategory: (id, category) => updateNotificationAwareItem(id, (item) => ({ ...item, category, completed: category === 'task' ? item.completed ?? false : undefined })),
     updateTitle: (id, title) => updateNotificationAwareItem(id, (item) => ({ ...item, title })),
-    scheduleTomorrow, addReminder, updateReminder, toggleReminderEnabled,
+    scheduleTomorrow, addTask, addReminder, updateReminder, toggleReminderEnabled,
     addSubtask: (id, title) => updateItem(id, (item) => ({ ...item, subtasks: [...(item.subtasks ?? []), { id: createId('subtask'), title, completed: false }] })),
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
     addProject, addProjectHandoff, addTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
     addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, confirmOccurrence, matchOccurrence, skipOccurrence, postponeOccurrence,
     saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, setWalletSetup, exportData: exportAppData,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder]);
+  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTask, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

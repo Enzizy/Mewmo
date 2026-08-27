@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   appendDecimalPoint,
+  calculateInvestmentReturn,
   calculateWalletBalance,
   decimalQuantityToScaled,
   estimatedValueMinor,
@@ -14,6 +15,15 @@ import {
   sumDecimalQuantities,
   unitPriceMinorFromTotal,
 } from './money.ts';
+
+test('calculates investment return only when current value and cost basis are known', () => {
+  const gain = calculateInvestmentReturn(700_000, 600_000);
+  assert.equal(gain?.gainMinor, 100_000);
+  assert.equal(gain?.percent.toFixed(2), '16.67');
+  assert.deepEqual(calculateInvestmentReturn(150_000, 200_000), { gainMinor: -50_000, percent: -25 });
+  assert.equal(calculateInvestmentReturn(null, 600_000), null);
+  assert.equal(calculateInvestmentReturn(700_000, 0), null);
+});
 
 test('starts wallet tracking from a chosen cash balance without deducting older holdings', () => {
   const transactions = [

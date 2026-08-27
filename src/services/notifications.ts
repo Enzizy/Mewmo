@@ -2,7 +2,12 @@ import { Platform } from 'react-native';
 import { ThoughtItem } from '@/types';
 
 const channelId = 'gather-reminders';
+const taskCategoryId = 'lifedesk-task-actions';
+const reminderCategoryId = 'lifedesk-reminder-actions';
+export const COMPLETE_NOTIFICATION_ACTION = 'lifedesk-complete';
+export const SNOOZE_NOTIFICATION_ACTION = 'lifedesk-snooze';
 type NotificationsModule = typeof import('expo-notifications');
+export type LifeDeskNotificationAction = 'open' | 'complete' | 'snooze';
 
 let notificationsModulePromise: Promise<NotificationsModule> | undefined;
 
@@ -37,6 +42,7 @@ export async function configureNotifications() {
   });
 
   await ensureAndroidChannel(notifications);
+  await ensureNotificationCategories(notifications);
 }
 
 export async function hasNotificationPermission() {
@@ -54,14 +60,27 @@ export async function requestNotificationPermission() {
   return (await notifications.requestPermissionsAsync()).granted;
 }
 
-export async function subscribeToNotificationResponses(onItemPress: (itemId: string) => void) {
+export async function subscribeToNotificationResponses(onResponse: (itemId: string, action: LifeDeskNotificationAction) => void) {
   const notifications = await getNotifications();
   if (!notifications) return () => undefined;
 
-  const subscription = notifications.addNotificationResponseReceivedListener((response) => {
+  const handled = new Set<string>();
+  const handle = (response: Awaited<ReturnType<NotificationsModule['getLastNotificationResponseAsync']>>) => {
+    if (!response) return;
     const itemId = response.notification.request.content.data?.itemId;
-    if (typeof itemId === 'string') onItemPress(itemId);
-  });
+    if (typeof itemId !== 'string') return;
+    const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
+    if (handled.has(key)) return;
+    handled.add(key);
+    const action: LifeDeskNotificationAction = response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION
+      ? 'complete'
+      : response.actionIdentifier === SNOOZE_NOTIFICATION_ACTION ? 'snooze' : 'open';
+    onResponse(itemId, action);
+    void notifications.clearLastNotificationResponseAsync();
+  };
+
+  handle(await notifications.getLastNotificationResponseAsync());
+  const subscription = notifications.addNotificationResponseReceivedListener(handle);
 
   return () => subscription.remove();
 }
@@ -85,18 +104,45 @@ export async function scheduleItemNotification(item: ThoughtItem) {
       body: item.title,
       data: { itemId: item.id },
       sound: true,
+      categoryIdentifier: item.category === 'task' ? taskCategoryId : reminderCategoryId,
     },
     trigger,
+  });
+}
+
+export async function scheduleSnoozeNotification(item: ThoughtItem, minutes = 10) {
+  const notifications = await getNotifications();
+  if (!notifications) return undefined;
+  const date = new Date(Date.now() + Math.max(1, minutes) * 60_000);
+  return notifications.scheduleNotificationAsync({
+    content: {
+      title: item.category === 'reminder' ? 'Reminder' : 'A task still needs your attention',
+      body: item.title,
+      data: { itemId: item.id },
+      sound: true,
+      categoryIdentifier: item.category === 'task' ? taskCategoryId : reminderCategoryId,
+    },
+    trigger: { type: notifications.SchedulableTriggerInputTypes.DATE, date, channelId },
   });
 }
 
 async function ensureAndroidChannel(notifications: NotificationsModule) {
   if (Platform.OS !== 'android') return;
   await notifications.setNotificationChannelAsync(channelId, {
-    name: 'Thought reminders',
+    name: 'LifeDesk reminders',
     importance: notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 150, 250],
   });
+}
+
+async function ensureNotificationCategories(notifications: NotificationsModule) {
+  await notifications.setNotificationCategoryAsync(taskCategoryId, [
+    { identifier: COMPLETE_NOTIFICATION_ACTION, buttonTitle: 'Complete', options: { opensAppToForeground: true } },
+    { identifier: SNOOZE_NOTIFICATION_ACTION, buttonTitle: 'Snooze 10 min', options: { opensAppToForeground: true } },
+  ]);
+  await notifications.setNotificationCategoryAsync(reminderCategoryId, [
+    { identifier: SNOOZE_NOTIFICATION_ACTION, buttonTitle: 'Snooze 10 min', options: { opensAppToForeground: true } },
+  ]);
 }
 
 function recurrenceTrigger(notifications: NotificationsModule, recurrence: NonNullable<ThoughtItem['recurrence']>) {

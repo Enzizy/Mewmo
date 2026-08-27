@@ -88,6 +88,12 @@ export function estimatedValueMinor(quantity: string, priceMinor: number) {
   return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
 }
 
+export function calculateInvestmentReturn(currentMinor: number | null | undefined, costMinor: number) {
+  if (currentMinor == null || !Number.isSafeInteger(currentMinor) || !Number.isSafeInteger(costMinor) || costMinor <= 0) return null;
+  const gainMinor = currentMinor - costMinor;
+  return { gainMinor, percent: (gainMinor / costMinor) * 100 };
+}
+
 export function unitPriceMinorFromTotal(quantity: string, totalMinor: number) {
   const scaled = decimalQuantityToScaled(quantity);
   if (scaled == null || scaled <= 0n || !Number.isSafeInteger(totalMinor) || totalMinor <= 0) return null;

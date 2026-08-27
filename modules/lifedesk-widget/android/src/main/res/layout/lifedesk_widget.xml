@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/widget_root"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:background="@drawable/lifedesk_widget_background"
+  android:orientation="vertical">
+
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+    <TextView android:id="@+id/widget_brand" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="LifeDesk" android:textColor="@color/lifedesk_widget_ink" android:textSize="16sp" android:textStyle="bold" />
+    <TextView android:id="@+id/widget_urgent" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="All clear" android:textColor="@color/lifedesk_widget_secondary" android:textSize="11sp" />
+  </LinearLayout>
+
+  <TextView android:id="@+id/widget_next_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="10dp" android:ellipsize="end" android:maxLines="1" android:text="Open LifeDesk to sync" android:textColor="@color/lifedesk_widget_ink" android:textSize="14sp" android:textStyle="bold" />
+  <TextView android:id="@+id/widget_next_meta" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:ellipsize="end" android:maxLines="1" android:text="Your next reminder will appear here" android:textColor="@color/lifedesk_widget_secondary" android:textSize="11sp" />
+
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="9dp" android:orientation="horizontal">
+    <TextView android:id="@+id/widget_weather" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:ellipsize="end" android:maxLines="1" android:text="Weather not set" android:textColor="@color/lifedesk_widget_secondary" android:textSize="11sp" />
+    <TextView android:id="@+id/widget_wallet" android:layout_width="wrap_content" android:layout_height="wrap_content" android:ellipsize="end" android:maxLines="1" android:text="Balance hidden" android:textColor="@color/lifedesk_widget_secondary" android:textSize="11sp" />
+  </LinearLayout>
+
+  <LinearLayout android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="12dp" android:orientation="horizontal">
+    <LinearLayout android:id="@+id/action_capture" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/lifedesk_widget_action" android:contentDescription="Capture a voice note" android:gravity="center" android:orientation="horizontal">
+      <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="@null" android:src="@drawable/lifedesk_ic_mic" />
+      <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="4dp" android:text="Capture" android:textColor="@color/lifedesk_widget_white" android:textSize="11sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/action_expense" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/lifedesk_widget_action_secondary" android:contentDescription="Add an expense" android:gravity="center" android:orientation="horizontal">
+      <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="@null" android:src="@drawable/lifedesk_ic_expense" />
+      <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="3dp" android:text="Expense" android:textColor="@color/lifedesk_widget_ink" android:textSize="10sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/action_task" android:layout_width="0dp" android:layout_height="44dp" android:layout_marginEnd="6dp" android:layout_weight="1" android:background="@drawable/lifedesk_widget_action_secondary" android:contentDescription="Add a task" android:gravity="center" android:orientation="horizontal">
+      <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="@null" android:src="@drawable/lifedesk_ic_task" />
+      <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="3dp" android:text="Task" android:textColor="@color/lifedesk_widget_ink" android:textSize="10sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/action_reminder" android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1" android:background="@drawable/lifedesk_widget_action_secondary" android:contentDescription="Add a reminder" android:gravity="center" android:orientation="horizontal">
+      <ImageView android:layout_width="18dp" android:layout_height="18dp" android:contentDescription="@null" android:src="@drawable/lifedesk_ic_calendar" />
+      <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="3dp" android:text="Remind" android:textColor="@color/lifedesk_widget_ink" android:textSize="10sp" android:textStyle="bold" />
+    </LinearLayout>
+  </LinearLayout>
+</LinearLayout>
