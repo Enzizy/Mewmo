@@ -68,6 +68,7 @@ import {
 import { dateLabelFor, timeLabelFor } from '@/utils/date';
 import { unitPriceMinorFromTotal } from '@/utils/money';
 import { marketQuotesNeedRefresh } from '@/utils/market';
+import { normalizeHomePreferences } from '@/features/home/home-preferences';
 import { localDateKey, localNoonIso, normalizeMonthlyDays } from '@/utils/recurrence';
 import { recurrenceForDate } from '@/utils/reminders';
 
@@ -614,9 +615,10 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   }, [refresh]);
 
   const updateHomePreferences = useCallback(async (preferences: HomePreferences) => {
-    await saveHomePreferences(preferences);
-    await refresh();
-  }, [refresh]);
+    const normalized = normalizeHomePreferences(preferences);
+    await saveHomePreferences(normalized);
+    setData((current) => ({ ...current, homePreferences: normalized }));
+  }, []);
 
   const setWalletSetup = useCallback(async (setup: WalletSetup) => {
     if (!Number.isSafeInteger(setup.openingBalanceMinor) || setup.openingBalanceMinor < 0) throw new Error('Enter a valid starting wallet amount.');

@@ -94,7 +94,7 @@ export default function HomeScreen() {
   };
 
   return <AppScreen assistant>
-    <PageHeader eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)} title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`} supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
+    <PageHeader layout="stacked" eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)} title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`} supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
     {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : visibleWidgets.map(widget)}
   </AppScreen>;
 }
