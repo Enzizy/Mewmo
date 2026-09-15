@@ -1,5 +1,9 @@
+// Built once: these are called for every row of every money list.
+const pesoFormat = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 });
+const dollarFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 });
+
 export function formatPeso(minor: number) {
-  return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(minor / 100);
+  return pesoFormat.format(minor / 100);
 }
 
 export type DisplayCurrency = 'PHP' | 'USD';
@@ -31,7 +35,7 @@ export function formatMoney(minor: number, currency: DisplayCurrency, usdPhp?: n
   if (currency === 'PHP') return formatPeso(minor);
   const usdMinor = phpMinorToUsdMinor(minor, usdPhp);
   if (usdMinor == null) return '—';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(usdMinor / 100);
+  return dollarFormat.format(usdMinor / 100);
 }
 
 export function parsePesoToMinor(value: string) {

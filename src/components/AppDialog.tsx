@@ -13,7 +13,8 @@ import {
 } from 'react-native';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, fonts, motion, radius, spacing } from '@/constants/theme';
+import { colors, fonts, motion, radius, spacing, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 
 export type AppDialogTone = 'info' | 'warning' | 'danger' | 'success';
 
@@ -38,6 +39,7 @@ type AppDialogContextValue = {
 const AppDialogContext = createContext<AppDialogContextValue | null>(null);
 
 export function AppDialogProvider({ children }: PropsWithChildren) {
+  useTheme();
   const [dialog, setDialog] = useState<AppDialogOptions | null>(null);
   const [reduceMotion, setReduceMotion] = useState(false);
   const progress = useRef(new Animated.Value(0)).current;
@@ -187,10 +189,10 @@ const toneStyles: Record<AppDialogTone, { icon: keyof typeof Feather.glyphMap; s
   success: { icon: 'check', soft: colors.greenSoft, strong: colors.green },
 };
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   content: { flex: 1 },
   layer: { flex: 1, paddingHorizontal: spacing.xl, alignItems: 'center', justifyContent: 'center' },
-  scrim: { position: 'absolute', inset: 0, backgroundColor: colors.ink },
+  scrim: { position: 'absolute', inset: 0, backgroundColor: colors.scrim },
   dialog: {
     width: '100%', maxWidth: 420, padding: spacing.xl, borderRadius: radius.lg,
     borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper,
@@ -210,4 +212,4 @@ const styles = StyleSheet.create({
   primaryLabel: { color: colors.paper },
   secondaryLabel: { color: colors.ink },
   pressed: { opacity: 0.74, transform: [{ scale: 0.99 }] },
-});
+}));

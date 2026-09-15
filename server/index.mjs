@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import http from 'node:http';
 import { timingSafeEqual } from 'node:crypto';
 import { GoogleGenAI } from '@google/genai';
-import { buildOrganizerPrompt, normalizeAudioMimeType, responseSchema, validateOrganizedDump } from './organizer.mjs';
+import { buildOrganizerPrompt, buildTranscriptionPrompt, responseSchema, validateAudioRequest, validateOrganizedDump, validateTranscriptResponse } from './organizer.mjs';
 import { loadTwelveDataQuotes } from './market.mjs';
 import { assistantResponseSchema, assistantSystemInstruction, buildAssistantContents, validateAssistantRequest, validateAssistantResponse } from './personal-assistant.mjs';
 import { loadTwelveDataExchangeRate, validateCurrencyPair } from './exchange-rate.mjs';
@@ -64,7 +64,7 @@ export async function handleRequest(request, response) {
     try {
       const input = validateAssistantRequest(await readJson(request, 512 * 1024));
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const result = await ai.models.generateContent({ model, contents: buildAssistantContents(input), config: { systemInstruction: assistantSystemInstruction, temperature: 0.1, maxOutputTokens: 800, responseMimeType: 'application/json', responseJsonSchema: assistantResponseSchema } });
+      const result = await ai.models.generateContent({ model, contents: buildAssistantContents(input), config: { systemInstruction: assistantSystemInstruction, temperature: 0.1, maxOutputTokens: 1_200, responseMimeType: 'application/json', responseJsonSchema: assistantResponseSchema } });
       const text = result.text?.trim();
       if (!text) throw new Error('Gemini returned an empty answer.');
       const output = validateAssistantResponse(JSON.parse(text), validateOrganizedDump);
@@ -74,13 +74,41 @@ export async function handleRequest(request, response) {
       return sendJson(response, 500, { error: 'The assistant could not answer right now. Try again.' });
     }
   }
+  if (request.method === 'POST' && requestUrl.pathname === '/transcribe') {
+    if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
+    if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
+    try {
+      const input = validateAudioRequest(await readJson(request, maxBodyBytes));
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const audio = new Blob([Buffer.from(input.audioBase64, 'base64')], { type: input.mimeType });
+      let uploadedFile;
+      try {
+        uploadedFile = await ai.files.upload({ file: audio, config: { mimeType: input.mimeType, displayName: `lifedesk-transcribe-${Date.now()}` } });
+        if (!uploadedFile.uri) throw new Error('Gemini did not return an audio file URI.');
+        const interaction = await ai.interactions.create({
+          model,
+          input: [
+            { type: 'text', text: buildTranscriptionPrompt(input) },
+            { type: 'audio', uri: uploadedFile.uri, mime_type: input.mimeType },
+          ],
+        });
+        return sendJson(response, 200, { transcript: validateTranscriptResponse(interaction.output_text) });
+      } finally {
+        if (uploadedFile?.name) ai.files.delete({ name: uploadedFile.name }).catch(() => undefined);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to transcribe this recording.';
+      console.error(`[transcribe] ${message}`);
+      return sendJson(response, message.includes('too large') || message.includes('too long') ? 413 : 500, { error: message });
+    }
+  }
   if (request.method !== 'POST' || requestUrl.pathname !== '/organize') return sendJson(response, 404, { error: 'Not found.' });
   if (!process.env.GEMINI_API_KEY) return sendJson(response, 503, { error: 'The server is missing GEMINI_API_KEY.' });
   if (!allowRequest(rateLimitKey(request, requestUrl.pathname))) return sendJson(response, 429, { error: 'Too many requests. Try again later.' });
 
   try {
     const body = await readJson(request, maxBodyBytes);
-    const input = validateRequest(body);
+    const input = validateAudioRequest(body);
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const audio = new Blob([Buffer.from(input.audioBase64, 'base64')], { type: input.mimeType });
     let uploadedFile;
@@ -119,20 +147,6 @@ if (!process.env.VERCEL) {
     console.log(`LifeDesk AI server listening on http://0.0.0.0:${port}`);
     console.log(process.env.GEMINI_API_KEY ? `Gemini model: ${model}` : 'GEMINI_API_KEY is not configured yet.');
   });
-}
-
-function validateRequest(body) {
-  if (!body || typeof body !== 'object') throw new Error('Request body is required.');
-  if (typeof body.audioBase64 !== 'string' || body.audioBase64.length < 20) throw new Error('A valid audio recording is required.');
-  if (body.audioBase64.length > 27 * 1024 * 1024) throw new Error('The recording is too large. Keep it under 15 minutes.');
-  const mimeType = normalizeAudioMimeType(body.mimeType);
-  return {
-    audioBase64: body.audioBase64,
-    mimeType,
-    now: typeof body.now === 'string' ? body.now : new Date().toISOString(),
-    timeZone: typeof body.timeZone === 'string' ? body.timeZone.slice(0, 100) : 'UTC',
-    locale: typeof body.locale === 'string' ? body.locale.slice(0, 40) : 'en',
-  };
 }
 
 async function readJson(request, limit) {

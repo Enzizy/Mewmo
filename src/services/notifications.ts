@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { ThoughtItem } from '@/types';
 
@@ -19,7 +20,7 @@ export class NotificationPermissionError extends Error {
 }
 
 export function isNotificationRuntimeAvailable() {
-  return Platform.OS !== 'web';
+  return Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 }
 
 async function getNotifications() {

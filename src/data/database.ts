@@ -21,6 +21,7 @@ import {
   WalletSetup,
 } from '@/types';
 import { DEFAULT_HOME_PREFERENCES, normalizeHomePreferences } from '@/features/home/home-preferences';
+import { BACKUP_VERSION } from '@/utils/backup-archive';
 import { unitPriceMinorFromTotal } from '@/utils/money';
 import { localDateKey, localNoonIso, scheduledDatesThrough } from '@/utils/recurrence';
 
@@ -268,6 +269,13 @@ async function openAndMigrate() {
     `);
   }
 
+  if (version < 6) {
+    await db.execAsync(`
+      ALTER TABLE financial_transactions ADD COLUMN note TEXT;
+      PRAGMA user_version = 6;
+    `);
+  }
+
   await migrateLegacyStorage(db);
   return db;
 }
@@ -297,9 +305,18 @@ function safeArray<T>(value?: string | null): T[] {
   }
 }
 
-export async function loadAppData(): Promise<AppDataSnapshot> {
+/**
+ * Posts any recurring rule occurrences that have come due. This scans every
+ * active rule, so it belongs on app start and foreground rather than on the
+ * read that follows each edit.
+ */
+export async function generateDueOccurrences() {
   const db = await initializeDatabase();
   await createDueRecurringOccurrences(db);
+}
+
+export async function loadAppData(): Promise<AppDataSnapshot> {
+  const db = await initializeDatabase();
   const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, occurrences, budgets, savingsGoals, goalSuggestions, reviewProposals, activity, walletSettings] = await Promise.all([
     db.getAllAsync<ThoughtItemRow>('SELECT * FROM thought_items ORDER BY created_at DESC'),
     db.getAllAsync<VoiceDumpRow>('SELECT * FROM voice_dumps ORDER BY created_at DESC'),
@@ -331,7 +348,7 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     dumps: dumpRows.map((row) => ({ id: row.id, title: row.title, createdAt: row.created_at, durationSeconds: row.duration_seconds, uri: row.uri, transcript: row.transcript })),
     projects: projects.map((row) => ({ id: row.id, name: row.name, summary: row.summary ?? undefined, status: row.status as Project['status'], currentFocus: row.current_focus ?? undefined, nextAction: row.next_action ?? undefined, createdAt: row.created_at, updatedAt: row.updated_at, sourceDumpId: row.source_dump_id ?? undefined })),
     projectSessions: sessions.map((row) => ({ id: row.id, projectId: row.project_id, note: row.note, nextAction: row.next_action ?? undefined, createdAt: row.created_at })),
-    transactions: transactions.map((row) => ({ id: row.id, type: row.type as FinancialTransaction['type'], title: row.title, category: row.category, amountMinor: row.amount_minor, occurredAt: row.occurred_at, sourceDumpId: row.source_dump_id ?? undefined, linkedInvestmentId: row.linked_investment_id ?? undefined })),
+    transactions: transactions.map(fromFinancialTransactionRow),
     investments: investments.map((row) => ({ id: row.id, asset: row.asset as InvestmentTransaction['asset'], quantity: row.quantity, unitPriceMinor: row.unit_price_minor, amountMinor: row.amount_minor, feesMinor: row.fees_minor, occurredAt: row.occurred_at, sourceDumpId: row.source_dump_id ?? undefined, cashTransactionId: row.cash_transaction_id ?? undefined })),
     quotes,
     recurringRules: recurringRules.map((row) => ({ id: row.id, kind: row.kind as RecurringRule['kind'], title: row.title, category: row.category, amountMinor: row.amount_minor, days: safeArray<number>(row.days_json), asset: (row.asset as RecurringRule['asset']) ?? undefined, quantity: row.quantity ?? undefined, active: Boolean(row.active), startsOn: row.starts_on, createdAt: row.created_at, updatedAt: row.updated_at })),
@@ -632,7 +649,126 @@ export async function saveActivity(activity: ActivityEvent) {
 }
 
 export async function exportAppData() {
-  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), data: await loadAppData() }, null, 2);
+  return JSON.stringify({ version: BACKUP_VERSION, exportedAt: new Date().toISOString(), data: await loadAppData() }, null, 2);
+}
+
+/**
+ * Replaces every local record with the contents of a validated backup.
+ * Runs as one transaction: either the whole archive lands or nothing changes.
+ */
+export async function importAppData(data: AppDataSnapshot) {
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    // Children first so foreign keys stay satisfied while the tables empty.
+    for (const table of [
+      'goal_contribution_suggestions', 'savings_goals', 'financial_occurrences', 'recurring_occurrences',
+      'recurring_rules', 'monthly_budgets', 'review_proposals', 'activity_events', 'market_quotes',
+      'investment_transactions', 'financial_transactions', 'project_sessions', 'projects',
+      'voice_dumps', 'thought_items',
+    ]) {
+      await txn.runAsync(`DELETE FROM ${table}`);
+    }
+
+    for (const item of data.items) await insertThoughtItem(txn, item);
+    for (const dump of data.dumps) await insertVoiceDump(txn, dump);
+    for (const project of data.projects) await insertProject(txn, project);
+    for (const session of data.projectSessions) {
+      await txn.runAsync('INSERT OR REPLACE INTO project_sessions (id, project_id, note, next_action, created_at) VALUES (?, ?, ?, ?, ?)', session.id, session.projectId, session.note, session.nextAction ?? null, session.createdAt);
+    }
+    for (const transaction of data.transactions) await insertFinancialTransaction(txn, transaction);
+    for (const investment of data.investments) await insertInvestmentTransaction(txn, investment);
+    for (const quote of data.quotes) {
+      await txn.runAsync('INSERT OR REPLACE INTO market_quotes (asset, price_minor, usd_price_minor, usd_php, as_of, source) VALUES (?, ?, ?, ?, ?, ?)', quote.asset, quote.priceMinor, quote.usdPriceMinor ?? null, quote.usdPhp ?? null, quote.asOf, quote.source);
+    }
+    for (const rule of data.recurringRules) {
+      await txn.runAsync(`INSERT OR REPLACE INTO recurring_rules
+        (id, kind, title, category, amount_minor, days_json, asset, quantity, active, starts_on, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      rule.id, rule.kind, rule.title, rule.category, rule.amountMinor, JSON.stringify(rule.days), rule.asset ?? null, rule.quantity ?? null, Number(rule.active), rule.startsOn, rule.createdAt, rule.updatedAt);
+    }
+    for (const occurrence of data.financialOccurrences) {
+      await txn.runAsync(`INSERT OR REPLACE INTO financial_occurrences
+        (id, rule_id, kind, title, category, planned_amount_minor, scheduled_date, due_date, asset, status,
+         actual_amount_minor, actual_date, quantity, fees_minor, note, transaction_id, investment_id, created_at, updated_at, resolved_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      occurrence.id, occurrence.ruleId, occurrence.kind, occurrence.title, occurrence.category, occurrence.plannedAmountMinor,
+      occurrence.scheduledDate, occurrence.dueDate, occurrence.asset ?? null, occurrence.status,
+      occurrence.actualAmountMinor ?? null, occurrence.actualDate ?? null, occurrence.quantity ?? null, occurrence.feesMinor ?? null,
+      occurrence.note ?? null, occurrence.transactionId ?? null, occurrence.investmentId ?? null, occurrence.createdAt, occurrence.updatedAt, occurrence.resolvedAt ?? null);
+    }
+    for (const budget of data.budgets) {
+      await txn.runAsync('INSERT OR REPLACE INTO monthly_budgets (id, category, limit_minor, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)', budget.id, budget.category, budget.limitMinor, Number(budget.active), budget.createdAt, budget.updatedAt);
+    }
+    for (const goal of data.savingsGoals) {
+      await txn.runAsync(`INSERT OR REPLACE INTO savings_goals
+        (id, name, target_minor, saved_minor, payday_contribution_minor, target_date, active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      goal.id, goal.name, goal.targetMinor, goal.savedMinor, goal.paydayContributionMinor, goal.targetDate ?? null, Number(goal.active), goal.createdAt, goal.updatedAt);
+    }
+    for (const suggestion of data.goalSuggestions) {
+      await txn.runAsync(`INSERT OR REPLACE INTO goal_contribution_suggestions
+        (id, goal_id, source_transaction_id, amount_minor, status, created_at, resolved_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      suggestion.id, suggestion.goalId, suggestion.sourceTransactionId, suggestion.amountMinor, suggestion.status, suggestion.createdAt, suggestion.resolvedAt ?? null);
+    }
+    for (const proposal of data.reviewProposals) {
+      await txn.runAsync('INSERT OR REPLACE INTO review_proposals (id, source, organized_json, recording_json, created_at) VALUES (?, ?, ?, ?, ?)', proposal.id, proposal.source, JSON.stringify(proposal.organized), proposal.recording ? JSON.stringify(proposal.recording) : null, proposal.createdAt);
+    }
+    for (const event of data.activity) await insertActivity(txn, event);
+
+    await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', HOME_PREFERENCES_KEY, JSON.stringify(normalizeHomePreferences(data.homePreferences)));
+    if (data.walletSetup) {
+      await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', WALLET_OPENING_BALANCE_KEY, String(data.walletSetup.openingBalanceMinor));
+      await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', WALLET_TRACKING_START_KEY, data.walletSetup.startsOn);
+    } else {
+      await txn.runAsync('DELETE FROM settings WHERE key IN (?, ?)', WALLET_OPENING_BALANCE_KEY, WALLET_TRACKING_START_KEY);
+    }
+    // A restored database must not be overwritten by the one-time legacy AsyncStorage import.
+    await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', LEGACY_IMPORT_KEY, 'complete');
+  });
+}
+
+export type TransactionEditInput = {
+  title: string;
+  category: string;
+  amountMinor: number;
+  occurredAt: string;
+  note?: string;
+};
+
+/**
+ * Edits a confirmed money record in place, keeping its id so scheduled-entry
+ * matches and goal suggestions stay attached. Investment-linked cash movements
+ * keep their amount, which belongs to the investment lot rather than this row.
+ */
+export async function updateFinancialTransactionRecord(id: string, input: TransactionEditInput) {
+  const title = input.title.trim();
+  if (!title) throw new Error('Add a title for this record.');
+  if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid amount greater than zero.');
+  if (Number.isNaN(Date.parse(input.occurredAt))) throw new Error('Choose a valid date for this record.');
+
+  const db = await initializeDatabase();
+  await withWriteTransaction(db, async (txn) => {
+    const existing = await txn.getFirstAsync<FinancialTransactionRow>('SELECT * FROM financial_transactions WHERE id = ?', id);
+    if (!existing) throw new Error('This money record no longer exists.');
+
+    const linkedInvestmentId = existing.linked_investment_id
+      ?? (await txn.getFirstAsync<{ id: string }>('SELECT id FROM investment_transactions WHERE cash_transaction_id = ?', id))?.id;
+    const amountMinor = linkedInvestmentId ? existing.amount_minor : input.amountMinor;
+
+    await txn.runAsync(
+      'UPDATE financial_transactions SET title = ?, category = ?, amount_minor = ?, occurred_at = ?, note = ? WHERE id = ?',
+      title, input.category.trim() || 'General', amountMinor, input.occurredAt, input.note?.trim() || null, id,
+    );
+    // The lot and its cash movement must keep telling the same story about when it happened.
+    if (linkedInvestmentId) await txn.runAsync('UPDATE investment_transactions SET occurred_at = ? WHERE id = ?', input.occurredAt, linkedInvestmentId);
+
+    if (existing.type === 'income' && amountMinor !== existing.amount_minor) {
+      // Suggestions you already acted on moved real money; only unresolved ones are recalculated.
+      await txn.runAsync(`DELETE FROM goal_contribution_suggestions WHERE source_transaction_id = ? AND status = 'pending'`, id);
+      await insertGoalSuggestionsForIncome(txn, id, amountMinor);
+    }
+  });
 }
 
 async function insertThoughtItem(executor: SqlExecutor, item: ThoughtItem) {
@@ -654,8 +790,22 @@ async function insertProject(executor: SqlExecutor, project: Project) {
 
 async function insertFinancialTransaction(executor: SqlExecutor, transaction: FinancialTransaction) {
   await executor.runAsync(`INSERT OR REPLACE INTO financial_transactions
-    (id, type, title, category, amount_minor, occurred_at, source_dump_id, linked_investment_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, transaction.id, transaction.type, transaction.title, transaction.category, transaction.amountMinor, transaction.occurredAt, transaction.sourceDumpId ?? null, transaction.linkedInvestmentId ?? null);
+    (id, type, title, category, amount_minor, occurred_at, note, source_dump_id, linked_investment_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, transaction.id, transaction.type, transaction.title, transaction.category, transaction.amountMinor, transaction.occurredAt, transaction.note ?? null, transaction.sourceDumpId ?? null, transaction.linkedInvestmentId ?? null);
+}
+
+function fromFinancialTransactionRow(row: FinancialTransactionRow): FinancialTransaction {
+  return {
+    id: row.id,
+    type: row.type as FinancialTransaction['type'],
+    title: row.title,
+    category: row.category,
+    amountMinor: row.amount_minor,
+    occurredAt: row.occurred_at,
+    note: row.note ?? undefined,
+    sourceDumpId: row.source_dump_id ?? undefined,
+    linkedInvestmentId: row.linked_investment_id ?? undefined,
+  };
 }
 
 async function insertInvestmentTransaction(executor: SqlExecutor, investment: InvestmentTransaction) {
@@ -698,7 +848,7 @@ type ThoughtItemRow = { id: string; category: string; title: string; date_label:
 type VoiceDumpRow = { id: string; title: string; created_at: string; duration_seconds: number; uri: string; transcript: string };
 type ProjectRow = { id: string; name: string; summary: string | null; status: string; current_focus: string | null; next_action: string | null; created_at: string; updated_at: string; source_dump_id: string | null };
 type ProjectSessionRow = { id: string; project_id: string; note: string; next_action: string | null; created_at: string };
-type FinancialTransactionRow = { id: string; type: string; title: string; category: string; amount_minor: number; occurred_at: string; source_dump_id: string | null; linked_investment_id: string | null };
+type FinancialTransactionRow = { id: string; type: string; title: string; category: string; amount_minor: number; occurred_at: string; note: string | null; source_dump_id: string | null; linked_investment_id: string | null };
 type InvestmentTransactionRow = { id: string; asset: string; quantity: string; unit_price_minor: number; amount_minor: number; fees_minor: number; occurred_at: string; source_dump_id: string | null; cash_transaction_id: string | null };
 type ActivityEventRow = { id: string; kind: string; title: string; xp: number; created_at: string; source_id: string | null };
 type RecurringRuleRow = { id: string; kind: string; title: string; category: string; amount_minor: number; days_json: string; asset: string | null; quantity: string | null; active: number; starts_on: string; created_at: string; updated_at: string };
@@ -711,19 +861,33 @@ type ReviewProposalRow = { id: string; source: string; organized_json: string; r
 
 async function createDueRecurringOccurrences(db: SQLite.SQLiteDatabase) {
   const rules = await db.getAllAsync<RecurringRuleRow>('SELECT * FROM recurring_rules WHERE active = 1');
+  if (!rules.length) return;
+
   const through = localDateKey(new Date());
+  const [legacyRows, existingRows] = await Promise.all([
+    db.getAllAsync<{ rule_id: string; scheduled_date: string }>('SELECT rule_id, scheduled_date FROM recurring_occurrences'),
+    db.getAllAsync<{ rule_id: string; scheduled_date: string }>('SELECT rule_id, scheduled_date FROM financial_occurrences'),
+  ]);
+  const known = new Set([...legacyRows, ...existingRows].map((row) => `${row.rule_id}\u0000${row.scheduled_date}`));
+
+  const pending: { row: RecurringRuleRow; scheduledDate: string }[] = [];
   for (const row of rules) {
-    const dates = scheduledDatesThrough({ days: safeArray<number>(row.days_json), startsOn: row.starts_on }, through);
-    for (const scheduledDate of dates) {
-      const legacy = await db.getFirstAsync<{ id: string }>('SELECT id FROM recurring_occurrences WHERE rule_id = ? AND scheduled_date = ?', row.id, scheduledDate);
-      if (legacy) continue;
-      const now = new Date().toISOString();
-      await db.runAsync(`INSERT OR IGNORE INTO financial_occurrences
+    for (const scheduledDate of scheduledDatesThrough({ days: safeArray<number>(row.days_json), startsOn: row.starts_on }, through)) {
+      if (known.has(`${row.id}\u0000${scheduledDate}`)) continue;
+      pending.push({ row, scheduledDate });
+    }
+  }
+  if (!pending.length) return;
+
+  const now = new Date().toISOString();
+  await withWriteTransaction(db, async (txn) => {
+    for (const { row, scheduledDate } of pending) {
+      await txn.runAsync(`INSERT OR IGNORE INTO financial_occurrences
         (id, rule_id, kind, title, category, planned_amount_minor, scheduled_date, due_date, asset, status, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       `occurrence-${row.id}-${scheduledDate}`, row.id, row.kind, row.title, row.category, row.amount_minor, scheduledDate, scheduledDate, row.asset, now, now);
     }
-  }
+  });
 }
 
 function fromFinancialOccurrenceRow(row: FinancialOccurrenceRow): FinancialOccurrence {

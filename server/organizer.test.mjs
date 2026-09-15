@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeAudioMimeType, validateOrganizedDump } from './organizer.mjs';
+import { buildTranscriptionPrompt, normalizeAudioMimeType, validateAudioRequest, validateOrganizedDump, validateTranscriptResponse } from './organizer.mjs';
 
 test('normalizes Expo m4a MIME aliases for Gemini', () => {
   assert.equal(normalizeAudioMimeType('audio/mp4'), 'audio/m4a');
@@ -11,6 +11,15 @@ test('normalizes Expo m4a MIME aliases for Gemini', () => {
 test('rejects unsupported audio MIME types', () => {
   assert.equal(normalizeAudioMimeType('audio/unsupported'), 'audio/m4a');
   assert.equal(normalizeAudioMimeType(undefined), 'audio/m4a');
+});
+
+test('validates the shared audio request and bounds transcription output', () => {
+  const input = validateAudioRequest({ audioBase64: 'a'.repeat(20), mimeType: 'audio/mp4', now: '2026-09-14T10:00:00+08:00', timeZone: 'Asia/Manila', locale: 'en-PH' });
+  assert.equal(input.mimeType, 'audio/m4a');
+  assert.match(buildTranscriptionPrompt(input), /Return only the spoken transcript/);
+  assert.equal(validateTranscriptResponse('  hello  '), 'hello');
+  assert.throws(() => validateTranscriptResponse('x'.repeat(5_000)), /recording transcript is too long.*4,000 characters or fewer/i);
+  assert.throws(() => validateTranscriptResponse('  '), /transcript/);
 });
 
 test('normalizes a valid organized dump', () => {

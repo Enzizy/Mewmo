@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router/stack';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
+import * as SystemUI from 'expo-system-ui';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -14,6 +15,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/instrument-sans';
 import { ItemsProvider, useItems } from '@/store/ItemsContext';
+import { ThemeProvider, useTheme } from '@/store/ThemeContext';
 import { AppDialogProvider } from '@/components/AppDialog';
 import { LifeDeskNativeSync } from '@/components/LifeDeskNativeSync';
 import { colors } from '@/constants/theme';
@@ -28,13 +30,25 @@ export default function RootLayout() {
   if (!loaded) return null;
 
   return (
+    <ThemeProvider>
+      <ThemedRoot />
+    </ThemeProvider>
+  );
+}
+
+function ThemedRoot() {
+  const { theme } = useTheme();
+
+  useEffect(() => { SystemUI.setBackgroundColorAsync(colors.background).catch(() => undefined); }, [theme]);
+
+  return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       <SafeAreaProvider>
         <ItemsProvider>
           <LifeDeskNativeSync />
           <NotificationBridge />
           <AppDialogProvider>
-            <StatusBar style="dark" />
+            <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
             <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
               <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
               <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />

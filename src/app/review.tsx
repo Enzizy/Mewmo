@@ -2,21 +2,23 @@ import { Feather } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { OrganizedItemInput, SuggestionKind } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
 import { formatPeso, normalizeDecimalQuantityInput, parsePesoToMinor } from '@/utils/money';
+import { useTheme } from '@/store/ThemeContext';
 
 const kinds: SuggestionKind[] = ['task', 'reminder', 'project', 'expense', 'income', 'investment', 'idea', 'note'];
 const labels: Record<SuggestionKind, string> = { task: 'TASK', reminder: 'REMINDER', project: 'PROJECT', expense: 'EXPENSE', income: 'INCOME', investment: 'INVESTMENT', idea: 'IDEA', note: 'NOTE' };
 
 export default function ReviewScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
@@ -53,7 +55,8 @@ export default function ReviewScreen() {
         setPendingRecording(null);
         setPendingOrganizedDump(null);
       }
-      router.replace((savedProposal ? '/wallet/inbox' : '/') as Href);
+      if (savedProposal?.source === 'chat') router.dismissTo('/chat');
+      else router.replace((savedProposal ? '/wallet/inbox' : '/') as Href);
     } }));
   const confirm = async () => {
     if (invalidCount) return setError('Complete the highlighted money or investment details before confirming.');
@@ -62,7 +65,10 @@ export default function ReviewScreen() {
     try {
       if (savedProposal) await confirmReviewProposal(savedProposal.id, { ...organizedDump, items });
       else await confirmOrganizedDump({ ...organizedDump, items });
-      router.replace('/results');
+      if (savedProposal?.source === 'chat') {
+        showDialog({ title: 'Changes saved', message: 'Your confirmed items have been added. You can keep talking to your assistant.', tone: 'success' });
+        router.dismissTo('/chat');
+      } else router.replace('/results');
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'These suggestions could not be saved.');
       setSaving(false);
@@ -104,21 +110,21 @@ export default function ReviewScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   empty: { paddingTop: 80, textAlign: 'center', fontFamily: fonts.body, color: colors.secondary },
   hero: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   heroCopy: { flex: 1 },
-  title: { fontFamily: fonts.pixelBold, fontSize: 26, lineHeight: 29, color: colors.ink },
+  title: { fontFamily: fonts.bodyBold, fontSize: 26, lineHeight: 29, color: colors.ink },
   support: { marginTop: 7, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.secondary },
   transcript: { marginTop: 18, padding: 15, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 6, backgroundColor: colors.background },
-  micro: { fontFamily: fonts.pixelSemiBold, fontSize: 11, letterSpacing: 0.8, color: colors.secondary },
+  micro: { fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 0.8, color: colors.secondary },
   transcriptText: { marginTop: 8, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.ink },
   list: { marginTop: 12, gap: 8 },
   card: { padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 6, backgroundColor: colors.surface },
   cardInvalid: { borderColor: colors.danger },
   cardHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   kind: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  kindText: { fontFamily: fonts.pixelSemiBold, fontSize: 12, color: colors.accent },
+  kindText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.accent },
   remove: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   input: { height: 44, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.ink },
   schedule: { marginTop: 8, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
@@ -128,13 +134,13 @@ const styles = StyleSheet.create({
   amountPreview: { marginLeft: 'auto', fontFamily: fonts.body, fontSize: 12, color: colors.secondary },
   investmentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   asset: { minWidth: 82, minHeight: 42, borderWidth: 1, borderColor: colors.ink, alignItems: 'center', justifyContent: 'center' },
-  assetText: { fontFamily: fonts.pixelSemiBold, fontSize: 11, color: colors.ink },
+  assetText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.ink },
   quantity: { flex: 1, height: 44, borderBottomWidth: 1, borderBottomColor: colors.borderStrong, fontFamily: fonts.body, color: colors.ink },
   error: { marginTop: 12, fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 18, color: colors.danger },
   confirm: { height: 56, marginTop: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 4, backgroundColor: colors.ink },
-  confirmText: { fontFamily: fonts.pixelSemiBold, fontSize: 16, color: colors.surface },
+  confirmText: { fontFamily: fonts.bodySemiBold, fontSize: 16, color: colors.surface },
   discard: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  discardText: { fontFamily: fonts.pixelSemiBold, fontSize: 11, color: colors.secondary },
+  discardText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.secondary },
   disabled: { opacity: 0.45 },
   pressed: { transform: [{ scale: 0.985 }] },
-});
+}));

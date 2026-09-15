@@ -34,9 +34,20 @@ export function calculateFinancialForecast(data: ForecastData, balanceMinor: num
     .sort((a, b) => a.date.localeCompare(b.date));
   const upcomingBillsMinor = commitments.filter((item) => item.kind === 'expense').reduce((sum, item) => sum + item.amountMinor, 0);
   const upcomingInvestmentsMinor = commitments.filter((item) => item.kind === 'investment').reduce((sum, item) => sum + item.amountMinor, 0);
+  // A scheduled bill in a budgeted category is already reserved as a commitment.
+  // Counting the rest of that budget on top would reserve the same pesos twice.
+  const committedByCategory = new Map<string, number>();
+  for (const rule of active) {
+    if (rule.kind !== 'expense') continue;
+    const key = rule.category.toLocaleLowerCase();
+    const scheduled = commitments.filter((item) => item.title === rule.title && item.kind === 'expense').reduce((sum, item) => sum + item.amountMinor, 0);
+    if (scheduled) committedByCategory.set(key, (committedByCategory.get(key) ?? 0) + scheduled);
+  }
   const remainingBudgetMinor = data.budgets.filter((budget) => budget.active).reduce((sum, budget) => {
-    const spent = data.transactions.filter((item) => item.type === 'expense' && isSameMonth(item.occurredAt, today) && item.category.toLocaleLowerCase() === budget.category.toLocaleLowerCase()).reduce((total, item) => total + item.amountMinor, 0);
-    return sum + Math.max(0, budget.limitMinor - spent);
+    const key = budget.category.toLocaleLowerCase();
+    const spent = data.transactions.filter((item) => item.type === 'expense' && isSameMonth(item.occurredAt, today) && item.category.toLocaleLowerCase() === key).reduce((total, item) => total + item.amountMinor, 0);
+    const alreadyCommitted = committedByCategory.get(key) ?? 0;
+    return sum + Math.max(0, budget.limitMinor - spent - alreadyCommitted);
   }, 0);
   const reservedGoalsMinor = (data.savingsGoals ?? []).filter((goal) => goal.active).reduce((sum, goal) => sum + goal.savedMinor, 0);
   const projectedBalanceMinor = balanceMinor - upcomingBillsMinor - upcomingInvestmentsMinor - remainingBudgetMinor - reservedGoalsMinor;

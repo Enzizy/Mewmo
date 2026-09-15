@@ -2,26 +2,28 @@ import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { BudgetForm, RecurringRuleForm } from '@/features/wallet/finance-forms';
 import { useItems } from '@/store/ItemsContext';
 import { MonthlyBudget, RecurringRule } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
 import { formatPeso } from '@/utils/money';
 import { nextScheduledDate } from '@/utils/recurrence';
+import { useTheme } from '@/store/ThemeContext';
 
 type Editor = { kind: 'automation'; value?: RecurringRule } | { kind: 'budget'; value?: MonthlyBudget } | null;
 
 export default function PlanningScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const params = useLocalSearchParams<{ action?: string }>();
-  const { recurringRules, budgets, transactions, marketRefreshError, refreshMarketQuotes, toggleRecurringRule, deleteRecurringRule, deleteBudget } = useItems();
+  const { recurringRules, budgets, transactions, marketRefreshError, refreshMarketQuotes, toggleRecurringRule, deleteRecurringRule, deleteBudget, reload } = useItems();
   const automationRules = recurringRules.filter((rule) => rule.kind !== 'expense');
   const [editor, setEditor] = useState<Editor>(params.action === 'automation' ? { kind: 'automation' } : params.action === 'budget' ? { kind: 'budget' } : null);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
@@ -44,7 +46,7 @@ export default function PlanningScreen() {
   };
 
   return (
-    <AppScreen tabbed assistant={!editor}>
+    <AppScreen tabbed assistant={!editor} onRefresh={reload}>
       <ScreenHeader back />
       <PageHeader title="Plans and budgets" supporting="Automate salary and investments, then keep flexible spending within a monthly limit." />
 
@@ -103,7 +105,7 @@ function Empty({ icon, title, detail }: { icon: keyof typeof Feather.glyphMap; t
 function ordinal(value: number) { const suffix = value % 10 === 1 && value !== 11 ? 'st' : value % 10 === 2 && value !== 12 ? 'nd' : value % 10 === 3 && value !== 13 ? 'rd' : 'th'; return `${value}${suffix}`; }
 function labelForKind(kind: RecurringRule['kind']) { return kind === 'income' ? 'Income' : kind === 'expense' ? 'Bill' : 'Investment'; }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   actions: { marginTop: 20, gap: 9 },
   action: { minHeight: 68, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   actionIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
@@ -142,4 +144,4 @@ const styles = StyleSheet.create({
   emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   emptyText: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
-});
+}));

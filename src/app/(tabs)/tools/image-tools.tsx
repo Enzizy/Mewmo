@@ -1,12 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { InlineError } from '@/components/converter-ui';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 import {
   deleteProcessedImages,
   ImageFormat,
@@ -32,6 +33,7 @@ const targets = [
 ] as const;
 
 export default function ImageToolsScreen() {
+  useTheme();
   const [selected, setSelected] = useState<SelectedImage[]>([]);
   const [results, setResults] = useState<ProcessedImage[]>([]);
   const [mode, setMode] = useState<ImageToolMode>('convert');
@@ -201,7 +203,7 @@ function parseDimension(value: string) { const parsed = Number(value); return Nu
 function widthInvalid(value: string) { return value.trim().length > 0 && parseDimension(value) === null; }
 function formatBytes(value: number | null) { if (value === null) return 'Size unavailable'; if (value < 1024) return `${value} B`; if (value < 1024 * 1024) return `${(value / 1024).toFixed(0)} KB`; return `${(value / (1024 * 1024)).toFixed(2)} MB`; }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   notice: { marginTop: 22, padding: 14, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, backgroundColor: colors.accentSoft },
   noticeText: { flex: 1, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.ink },
   section: { marginTop: 32 },
@@ -261,4 +263,4 @@ const styles = StyleSheet.create({
   processButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper },
   processDisabledText: { color: colors.muted },
   pressed: { opacity: 0.68 },
-});
+}));

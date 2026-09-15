@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 
 export type CatPose = 'idle' | 'curious' | 'listen' | 'sorting' | 'sleep' | 'celebrate';
 
@@ -17,6 +18,7 @@ const sequences: Record<Exclude<CatPose, 'celebrate'>, { row: number; frames: nu
 };
 
 export function PixelCat({ pose = 'idle', size = 96, speech }: { pose?: CatPose; size?: number; speech?: string }) {
+  useTheme();
   const reduceMotion = useReducedMotion();
   const sequence = pose === 'celebrate' ? null : sequences[pose];
   const [tick, setTick] = useState(0);
@@ -53,10 +55,10 @@ export function PixelCat({ pose = 'idle', size = 96, speech }: { pose?: CatPose;
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   wrapper: { position: 'relative', alignItems: 'center', justifyContent: 'flex-end' },
   atlas: { position: 'absolute' },
   speech: { position: 'absolute', zIndex: 2, top: -5, right: -25, minWidth: 58, paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderColor: colors.ink, borderRadius: 4, backgroundColor: colors.surface },
-  speechText: { fontFamily: fonts.pixelSemiBold, fontSize: 11, color: colors.ink, textAlign: 'center' },
+  speechText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.ink, textAlign: 'center' },
   speechTail: { position: 'absolute', left: 9, bottom: -4, width: 7, height: 7, borderLeftWidth: 1, borderBottomWidth: 1, borderColor: colors.ink, backgroundColor: colors.surface, transform: [{ rotate: '-45deg' }] },
-});
+}));

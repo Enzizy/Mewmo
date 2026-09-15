@@ -27,6 +27,15 @@ test('protected endpoints accept the configured bearer token', async () => {
   });
 });
 
+test('voice transcription and chat reject unauthenticated requests before processing', async () => {
+  await withTokens('correct-token', undefined, async () => {
+    for (const path of ['/transcribe', '/chat']) {
+      const response = await request(path, undefined, 'POST');
+      assert.equal(response.status, 401);
+    }
+  });
+});
+
 test('health reports whether API access protection is configured', async () => {
   await withTokens('correct-token', undefined, async () => {
     const response = await request('/health');
@@ -53,9 +62,9 @@ async function withTokens(serverToken, publicToken, run) {
   }
 }
 
-function request(url, token) {
+function request(url, token, method = 'GET') {
   const headers = token ? { authorization: `Bearer ${token}` } : {};
-  const request = { method: 'GET', url, headers, socket: { remoteAddress: '127.0.0.1' } };
+  const request = { method, url, headers, socket: { remoteAddress: '127.0.0.1' } };
   return new Promise((resolve) => {
     const response = {
       headers: {},

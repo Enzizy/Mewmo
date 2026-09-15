@@ -1,15 +1,17 @@
 import { Feather } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { loadSavedWeather, saveWeatherLocation, searchWeatherLocations, WeatherLocation, WeatherSnapshot } from '@/services/weather';
 import { roundedTemperature, weatherIcon, weatherLabel } from '@/utils/weather';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function WeatherScreen() {
+  useTheme();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<WeatherLocation[]>([]);
   const [forecast, setForecast] = useState<WeatherSnapshot | null>(null);
@@ -69,7 +71,7 @@ export default function WeatherScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   searchShell: { minHeight: 54, marginTop: 22, paddingLeft: 14, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper },
   searchInput: { flex: 1, minHeight: 52, fontFamily: fonts.body, fontSize: 14, color: colors.ink },
   searchButton: { minWidth: 78, minHeight: 46, marginRight: 4, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.ink },
@@ -88,11 +90,11 @@ const styles = StyleSheet.create({
   current: { minHeight: 220, marginTop: 18, padding: 22, borderRadius: radius.lg, backgroundColor: colors.ink },
   currentTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   location: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.paper },
-  condition: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, color: '#BDBDBD' },
+  condition: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, color: colors.onInkMuted },
   temperatureRow: { marginTop: 24, flexDirection: 'row', alignItems: 'flex-end', gap: 16 },
   temperature: { fontFamily: fonts.bodyBold, fontSize: 54, lineHeight: 58, letterSpacing: -2, color: colors.paper },
-  feels: { marginBottom: 5, fontFamily: fonts.body, fontSize: 11, color: '#C8C8C8' },
-  today: { marginTop: 20, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#333333' },
+  feels: { marginBottom: 5, fontFamily: fonts.body, fontSize: 11, color: colors.onInkMuted },
+  today: { marginTop: 20, paddingTop: 14, flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.onInkBorder },
   todayText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.paper },
   section: { marginTop: 32 },
   refresh: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -111,4 +113,4 @@ const styles = StyleSheet.create({
   attribution: { minHeight: 48, marginTop: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   attributionText: { fontFamily: fonts.body, fontSize: 10, color: colors.muted },
   pressed: { opacity: 0.72 },
-});
+}));

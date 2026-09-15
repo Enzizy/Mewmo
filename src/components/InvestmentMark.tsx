@@ -1,6 +1,7 @@
-import { StyleSheet, Text, View } from 'react-native';
-import { colors, fonts } from '@/constants/theme';
+import { Text, View } from 'react-native';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { InvestmentAsset } from '@/types';
+import { useTheme } from '@/store/ThemeContext';
 
 type InvestmentMarkProps = {
   asset: InvestmentAsset;
@@ -8,6 +9,7 @@ type InvestmentMarkProps = {
 };
 
 export function InvestmentMark({ asset, size = 36 }: InvestmentMarkProps) {
+  useTheme();
   return (
     <View
       accessibilityElementsHidden
@@ -29,7 +31,7 @@ export function InvestmentMark({ asset, size = 36 }: InvestmentMarkProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   mark: { alignItems: 'center', justifyContent: 'center' },
   symbol: { fontFamily: fonts.bodyBold, lineHeight: undefined, color: colors.paper },
-});
+}));

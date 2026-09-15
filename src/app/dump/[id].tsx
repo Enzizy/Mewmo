@@ -1,17 +1,19 @@
 import { Feather } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { ItemRow } from '@/components/ItemRow';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { formatDuration, relativeDateTimeLabel } from '@/utils/date';
 import { confirmAction } from '@/utils/confirm-action';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function DumpDetailScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -42,9 +44,9 @@ export default function DumpDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   kicker: { marginTop: 4, fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.4, color: colors.terracotta },
-  title: { marginTop: 10, fontFamily: fonts.editorialSemiBold, fontSize: 36, lineHeight: 41, color: colors.ink },
+  title: { marginTop: 10, fontFamily: fonts.bodyBold, fontSize: 36, lineHeight: 41, color: colors.ink },
   date: { marginTop: 8, fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
   player: { minHeight: 76, marginTop: 25, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: 14, backgroundColor: colors.surface },
   playIcon: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.dark, alignItems: 'center', justifyContent: 'center' },
@@ -58,4 +60,4 @@ const styles = StyleSheet.create({
   transcript: { fontFamily: fonts.body, fontSize: 15, lineHeight: 24, color: colors.secondary },
   empty: { fontFamily: fonts.body, fontSize: 13, color: colors.muted },
   missing: { paddingTop: 80, alignItems: 'center' },
-});
+}));

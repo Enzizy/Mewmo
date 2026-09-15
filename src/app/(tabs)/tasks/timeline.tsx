@@ -1,19 +1,21 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { TimelineItem } from '@/components/TimelineItem';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { ThoughtItem, VoiceDump } from '@/types';
 import { timeLabelFor } from '@/utils/date';
+import { useTheme } from '@/store/ThemeContext';
 
 type TimelineEntry = { type: 'item'; date: Date; item: ThoughtItem } | { type: 'dump'; date: Date; dump: VoiceDump };
 
 export default function TimelineScreen() {
+  useTheme();
   const router = useRouter();
   const { items, dumps } = useItems();
   const groups = useMemo(() => {
@@ -40,7 +42,7 @@ export default function TimelineScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   month: { marginTop: 24, fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 1.5, color: colors.accent },
   calendarRule: { height: 1, marginTop: 12, marginBottom: 6, backgroundColor: colors.borderStrong },
   dayGroup: { flexDirection: 'row', paddingTop: 24 },
@@ -59,4 +61,4 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', paddingTop: 78 },
   emptyTitle: { marginTop: 14, fontFamily: fonts.bodySemiBold, fontSize: 16, color: colors.ink },
   emptyText: { marginTop: 5, fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
-});
+}));

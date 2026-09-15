@@ -1,23 +1,25 @@
 import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { RecurringRuleForm } from '@/features/wallet/finance-forms';
 import { useItems } from '@/store/ItemsContext';
 import { RecurringRule } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
 import { formatPeso } from '@/utils/money';
 import { nextScheduledDate } from '@/utils/recurrence';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function SubscriptionsScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
-  const { recurringRules, toggleRecurringRule, deleteRecurringRule } = useItems();
+  const { recurringRules, toggleRecurringRule, deleteRecurringRule, reload } = useItems();
   const [editing, setEditing] = useState<RecurringRule | 'new' | null>(null);
   const expenses = recurringRules.filter((rule) => rule.kind === 'expense');
   const monthlyTotal = expenses.filter((rule) => rule.active).reduce((sum, rule) => sum + rule.amountMinor * rule.days.length, 0);
@@ -30,7 +32,7 @@ export default function SubscriptionsScreen() {
   }));
 
   return (
-    <AppScreen tabbed assistant={!editing}>
+    <AppScreen tabbed assistant={!editing} onRefresh={reload}>
       <ScreenHeader back />
       <PageHeader title="Subscriptions and bills" supporting="Schedule recurring expenses, then confirm the actual amount and payment date before your wallet changes." />
 
@@ -68,13 +70,13 @@ export default function SubscriptionsScreen() {
 
 function ordinal(value: number) { const suffix = value % 10 === 1 && value !== 11 ? 'st' : value % 10 === 2 && value !== 12 ? 'nd' : value % 10 === 3 && value !== 13 ? 'rd' : 'th'; return `${value}${suffix}`; }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   summary: { marginTop: 22, padding: 18, minHeight: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.lg, backgroundColor: colors.ink },
-  summaryLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: '#B8B8B8' },
+  summaryLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.onInkMuted },
   summaryValue: { marginTop: 6, fontFamily: fonts.bodyBold, fontSize: 27, fontVariant: ['tabular-nums'], color: colors.paper },
-  summaryCount: { alignItems: 'center', paddingLeft: 18, borderLeftWidth: 1, borderLeftColor: '#3A3A3A' },
+  summaryCount: { alignItems: 'center', paddingLeft: 18, borderLeftWidth: 1, borderLeftColor: colors.onInkBorder },
   countValue: { fontFamily: fonts.bodyBold, fontSize: 21, color: colors.paper },
-  countLabel: { marginTop: 2, fontFamily: fonts.body, fontSize: 10, color: '#B8B8B8' },
+  countLabel: { marginTop: 2, fontFamily: fonts.body, fontSize: 10, color: colors.onInkMuted },
   add: { minHeight: 78, marginTop: 18, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   addIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: colors.ink },
   addTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
@@ -97,4 +99,4 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border },
   emptyText: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
-});
+}));

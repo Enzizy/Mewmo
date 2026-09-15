@@ -27,8 +27,10 @@ export type WeatherSnapshot = {
   days: WeatherDay[];
 };
 
-const LOCATION_KEY = 'mewmo.weather.location.v1';
-const FORECAST_KEY = 'mewmo.weather.forecast.v1';
+const LOCATION_KEY = 'lifedesk.weather.location.v1';
+const FORECAST_KEY = 'lifedesk.weather.forecast.v1';
+const LEGACY_LOCATION_KEY = 'mewmo.weather.location.v1';
+const LEGACY_FORECAST_KEY = 'mewmo.weather.forecast.v1';
 const CACHE_MS = 30 * 60 * 1000;
 
 export async function searchWeatherLocations(query: string, signal?: AbortSignal) {
@@ -82,10 +84,22 @@ export async function saveWeatherLocation(location: WeatherLocation, signal?: Ab
   return forecast;
 }
 
+/** Moves a saved city from the pre-rename key so the Home widget keeps working. */
+async function adoptLegacyWeather() {
+  const [[, locationJson], [, forecastJson]] = await AsyncStorage.multiGet([LEGACY_LOCATION_KEY, LEGACY_FORECAST_KEY]);
+  const location = parseStored<WeatherLocation>(locationJson);
+  if (!location) return null;
+  const pairs: [string, string][] = [[LOCATION_KEY, locationJson as string]];
+  if (forecastJson) pairs.push([FORECAST_KEY, forecastJson]);
+  await AsyncStorage.multiSet(pairs);
+  await AsyncStorage.multiRemove([LEGACY_LOCATION_KEY, LEGACY_FORECAST_KEY]);
+  return location;
+}
+
 export async function loadSavedWeather(options: { refresh?: boolean; signal?: AbortSignal } = {}) {
   const [[, locationJson], [, forecastJson]] = await AsyncStorage.multiGet([LOCATION_KEY, FORECAST_KEY]);
-  const location = parseStored<WeatherLocation>(locationJson);
-  const cached = parseStored<WeatherSnapshot>(forecastJson);
+  const location = parseStored<WeatherLocation>(locationJson) ?? await adoptLegacyWeather();
+  const cached = parseStored<WeatherSnapshot>(forecastJson ?? await AsyncStorage.getItem(LEGACY_FORECAST_KEY));
   if (!location) return { forecast: null, stale: false, error: null as string | null };
   const stale = !cached || Date.now() - Date.parse(cached.fetchedAt) >= CACHE_MS;
   if (!options.refresh || !stale) return { forecast: cached, stale, error: null as string | null };

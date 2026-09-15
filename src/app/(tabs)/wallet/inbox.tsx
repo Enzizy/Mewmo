@@ -2,21 +2,23 @@ import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
 import { Href, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { InvestmentMark } from '@/components/InvestmentMark';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { FinancialOccurrence, ReviewProposal } from '@/types';
 import { appendDecimalPoint, formatPeso, normalizeDecimalQuantityInput, parsePesoToMinor, quantityFromAmountAndUnitPrice } from '@/utils/money';
 import { localDateKey } from '@/utils/recurrence';
 import { isMarketQuoteFresh } from '@/utils/market';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function ReviewInboxScreen() {
+  useTheme();
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const data = useItems();
@@ -30,7 +32,7 @@ export default function ReviewInboxScreen() {
   };
 
   return (
-    <AppScreen assistant={!selected}>
+    <AppScreen assistant={!selected} onRefresh={data.reload}>
       <ScreenHeader back />
       <PageHeader title="Review inbox" supporting="Nothing changes your wallet, investments, goals, or calendar until you confirm it." />
 
@@ -138,9 +140,9 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 function Empty({ icon, title, detail }: { icon: keyof typeof Feather.glyphMap; title: string; detail: string }) { return <View style={styles.empty}><View style={styles.icon}><Feather name={icon} size={19} color={colors.muted} /></View><View style={styles.main}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text></View></View>; }
 function formatDate(value: string) { return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`)); }
 
-const styles = StyleSheet.create({
-  summary: { marginTop: 20, padding: 16, flexDirection: 'row', borderRadius: radius.lg, backgroundColor: colors.ink }, metric: { flex: 1, alignItems: 'center' }, metricValue: { fontFamily: fonts.bodyBold, fontSize: 24, fontVariant: ['tabular-nums'], color: colors.paper }, metricLabel: { marginTop: 3, textAlign: 'center', fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: '#CFCFCF' }, divider: { width: 1, backgroundColor: '#383838' },
+const styles = themedStyles(() => ({
+  summary: { marginTop: 20, padding: 16, flexDirection: 'row', borderRadius: radius.lg, backgroundColor: colors.ink }, metric: { flex: 1, alignItems: 'center' }, metricValue: { fontFamily: fonts.bodyBold, fontSize: 24, fontVariant: ['tabular-nums'], color: colors.paper }, metricLabel: { marginTop: 3, textAlign: 'center', fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.onInkMuted }, divider: { width: 1, backgroundColor: colors.onInkBorder },
   section: { marginTop: 32 }, list: { marginTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, row: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: colors.border }, goalRow: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border }, icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper }, incomeIcon: { backgroundColor: colors.greenSoft }, main: { flex: 1, minWidth: 0 }, titleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 }, rowTitle: { flexShrink: 1, fontFamily: fonts.bodySemiBold, fontSize: 14, lineHeight: 19, color: colors.ink }, meta: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary }, status: { marginTop: 3, fontFamily: fonts.bodySemiBold, fontSize: 10, color: colors.accent }, overdue: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4, overflow: 'hidden', fontFamily: fonts.bodyBold, fontSize: 8, color: colors.danger, backgroundColor: colors.dangerSoft }, pressed: { opacity: 0.7 },
   smallButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, confirmSmall: { minHeight: 42, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.ink }, confirmSmallText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.paper }, empty: { minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border }, emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink }, emptyDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary },
   form: { marginTop: 20, padding: 18, gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper }, formHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, formTitle: { fontFamily: fonts.bodyBold, fontSize: 20, lineHeight: 25, color: colors.ink }, formDetail: { marginTop: 5, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary }, field: { gap: 7 }, fieldHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }, label: { fontFamily: fonts.bodySemiBold, fontSize: 12, lineHeight: 16, color: colors.ink }, hint: { flex: 1, textAlign: 'right', fontFamily: fonts.body, fontSize: 10, color: colors.muted }, inputShell: { minHeight: 50, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: colors.borderStrong }, prefix: { marginRight: 7, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.secondary }, input: { flex: 1, minHeight: 48, paddingVertical: 10, fontFamily: fonts.body, fontSize: 15, color: colors.ink }, decimalButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, decimal: { marginTop: -8, fontFamily: fonts.bodyBold, fontSize: 26, color: colors.ink }, helper: { marginTop: -8, fontFamily: fonts.body, fontSize: 10, lineHeight: 15, color: colors.secondary }, switchRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12 }, switchTitle: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink }, switchDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 10, lineHeight: 15, color: colors.secondary }, warning: { padding: 11, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: radius.sm, backgroundColor: colors.mustardSoft }, warningText: { flex: 1, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.ink }, confirm: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.md, backgroundColor: colors.ink }, confirmText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper }, disabled: { opacity: 0.5 }, secondaryActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 }, secondaryButton: { minHeight: 44, paddingHorizontal: 5, justifyContent: 'center' }, secondaryText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.accent }, skipText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.danger },
-});
+}));

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Linking, PermissionsAndroid, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 import {
   ArMeasureView,
   ArMeasureViewRef,
@@ -23,6 +24,7 @@ const initialMeasurement: MeasurementState = {
 };
 
 export default function ArMeasureScreen() {
+  useTheme();
   const router = useRouter();
   const measureRef = useRef<ArMeasureViewRef>(null);
   const [permission, setPermission] = useState<PermissionState>('checking');
@@ -72,9 +74,9 @@ export default function ArMeasureScreen() {
   const fatal = measurement.status === 'error' || measurement.status === 'unsupported';
   const placeLabel = measurement.pointCount === 0 ? 'Set point A' : 'Set point B';
 
-  return <AppScreen scroll={false} tabbed background={colors.ink}>
+  return <AppScreen scroll={false} tabbed background={camera.backdrop}>
     <View style={styles.liveHeader}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace('/tools')} style={styles.liveBack}><Feather name="arrow-left" size={22} color={colors.paper} /></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => router.canGoBack() ? router.back() : router.replace("/tools")} style={styles.liveBack}><Feather name="arrow-left" size={22} color={camera.text} /></Pressable>
       <Text style={styles.liveTitle}>AR Measure</Text>
       <View style={styles.liveSpacer} />
     </View>
@@ -103,7 +105,7 @@ export default function ArMeasureScreen() {
         {(['cm', 'in', 'm'] as DisplayUnit[]).map((value) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: unit === value }} key={value} onPress={() => setUnit(value)} style={[styles.unitButton, unit === value && styles.unitButtonActive]}><Text style={[styles.unitText, unit === value && styles.unitTextActive]}>{value}</Text></Pressable>)}
       </View>
       <View style={styles.actions}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Reset measurement" onPress={reset} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}><Feather name="rotate-ccw" size={20} color={colors.ink} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Reset measurement" onPress={reset} style={({ pressed }) => [styles.resetButton, pressed && styles.pressed]}><Feather name="rotate-ccw" size={20} color={camera.onSurface} /></Pressable>
         <Pressable accessibilityRole="button" accessibilityState={{ disabled: !measurement.canPlace || complete || fatal }} disabled={!measurement.canPlace || complete || fatal} onPress={placePoint} style={({ pressed }) => [styles.placeButton, (!measurement.canPlace || complete || fatal) && styles.placeButtonDisabled, pressed && measurement.canPlace && styles.pressed]}><View style={styles.placeButtonDot} /><Text style={styles.placeButtonText}>{complete ? 'Measurement complete' : placeLabel}</Text></Pressable>
       </View>
       <Text style={styles.accuracyNote}>For plain or light surfaces, add a small piece of contrasting tape near each endpoint.</Text>
@@ -151,39 +153,43 @@ function formatDistance(meters: number, unit: DisplayUnit) {
   return `${(meters * 100).toFixed(1)} cm`;
 }
 
-const styles = StyleSheet.create({
+// The live view draws over a camera feed, so its chrome is fixed rather than
+// themed: inverting it would put dark controls on a dark image.
+const camera = { backdrop: '#050505', surface: '#FFFFFF', onSurface: '#111111', onSurfaceMuted: '#555555', text: '#FFFFFF', muted: '#B8B8B8', control: '#292929', ready: '#4ADE80' } as const;
+
+const styles = themedStyles(() => ({
   liveHeader: { minHeight: 44, marginBottom: 12, flexDirection: 'row', alignItems: 'center' },
   liveBack: { width: 44, height: 44, marginLeft: -10, alignItems: 'center', justifyContent: 'center' },
-  liveTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.bodySemiBold, fontSize: 16, color: colors.paper },
+  liveTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.bodySemiBold, fontSize: 16, color: camera.text },
   liveSpacer: { width: 34 },
-  cameraCard: { flex: 1, minHeight: 300, overflow: 'hidden', borderRadius: radius.lg, backgroundColor: '#050505' },
+  cameraCard: { flex: 1, minHeight: 300, overflow: 'hidden', borderRadius: radius.lg, backgroundColor: camera.backdrop },
   scrimTop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: '65%', backgroundColor: 'rgba(0,0,0,0.2)' },
   statusPill: { position: 'absolute', top: 16, left: 16, right: 16, minHeight: 44, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: radius.full, backgroundColor: 'rgba(17,17,17,0.78)' },
   statusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.mustard },
-  statusDotReady: { backgroundColor: '#4ADE80' },
-  statusText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 16, color: colors.paper },
+  statusDotReady: { backgroundColor: camera.ready },
+  statusText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 12, lineHeight: 16, color: camera.text },
   reticle: { position: 'absolute', left: '50%', top: '50%', width: 42, height: 42, marginLeft: -21, marginTop: -21, alignItems: 'center', justifyContent: 'center', borderRadius: 21, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)' },
-  reticleReady: { borderColor: colors.paper, backgroundColor: 'rgba(37,99,235,0.22)' },
-  reticleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.paper },
+  reticleReady: { borderColor: camera.text, backgroundColor: 'rgba(37,99,235,0.22)' },
+  reticleDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: camera.text },
   resultFloat: { position: 'absolute', left: 20, right: 20, top: '42%', paddingHorizontal: 18, paddingVertical: 14, alignItems: 'center', borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.94)' },
-  resultEyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 10, letterSpacing: 1.1, color: colors.secondary },
-  resultValue: { marginTop: 3, fontFamily: fonts.bodyBold, fontSize: 34, letterSpacing: -1, color: colors.ink },
+  resultEyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 10, letterSpacing: 1.1, color: camera.onSurfaceMuted },
+  resultValue: { marginTop: 3, fontFamily: fonts.bodyBold, fontSize: 34, letterSpacing: -1, color: camera.onSurface },
   fatalCard: { position: 'absolute', left: 20, right: 20, top: '32%', padding: 20, alignItems: 'center', borderRadius: radius.md, backgroundColor: 'rgba(255,255,255,0.96)' },
-  fatalTitle: { marginTop: 8, fontFamily: fonts.bodySemiBold, fontSize: 16, color: colors.ink },
-  fatalText: { marginTop: 5, textAlign: 'center', fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
+  fatalTitle: { marginTop: 8, fontFamily: fonts.bodySemiBold, fontSize: 16, color: camera.onSurface },
+  fatalText: { marginTop: 5, textAlign: 'center', fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: camera.onSurfaceMuted },
   controlPanel: { paddingTop: 16 },
-  unitStrip: { alignSelf: 'center', padding: 3, flexDirection: 'row', borderRadius: radius.full, backgroundColor: '#292929' },
+  unitStrip: { alignSelf: 'center', padding: 3, flexDirection: 'row', borderRadius: radius.full, backgroundColor: camera.control },
   unitButton: { minWidth: 54, minHeight: 38, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderRadius: radius.full },
-  unitButtonActive: { backgroundColor: colors.paper },
-  unitText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: '#B8B8B8' },
-  unitTextActive: { color: colors.ink },
+  unitButtonActive: { backgroundColor: camera.surface },
+  unitText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: camera.muted },
+  unitTextActive: { color: camera.onSurface },
   actions: { marginTop: 13, flexDirection: 'row', gap: 10 },
-  resetButton: { width: 54, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: colors.paper },
-  placeButton: { flex: 1, minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: radius.md, backgroundColor: colors.paper },
+  resetButton: { width: 54, minHeight: 54, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md, backgroundColor: camera.surface },
+  placeButton: { flex: 1, minHeight: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: radius.md, backgroundColor: camera.surface },
   placeButtonDisabled: { opacity: 0.48 },
   placeButtonDot: { width: 13, height: 13, borderRadius: 7, borderWidth: 3, borderColor: colors.accent },
-  placeButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
-  accuracyNote: { marginTop: 9, textAlign: 'center', fontFamily: fonts.body, fontSize: 10, color: '#A8A8A8' },
+  placeButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: camera.onSurface },
+  accuracyNote: { marginTop: 9, textAlign: 'center', fontFamily: fonts.body, fontSize: 10, color: camera.muted },
   introIcon: { width: 58, height: 58, marginTop: 8, alignItems: 'center', justifyContent: 'center', borderRadius: 18, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   pageTitle: { marginTop: 22, maxWidth: 420, fontFamily: fonts.bodyBold, fontSize: 30, lineHeight: 36, letterSpacing: -0.8, color: colors.ink },
   pageSupport: { marginTop: 10, maxWidth: 510, fontFamily: fonts.body, fontSize: 15, lineHeight: 23, color: colors.secondary },
@@ -205,4 +211,4 @@ const styles = StyleSheet.create({
   permissionButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper },
   permissionFootnote: { marginTop: 10, textAlign: 'center', fontFamily: fonts.body, fontSize: 11, color: colors.muted },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
-});
+}));

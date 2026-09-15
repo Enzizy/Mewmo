@@ -78,7 +78,7 @@ Each action opens the page that owns that record and presents a labeled form. Th
 - No seeded salary, wallet, investment, bill, grocery, task, or project records remain in the application source; a fresh install starts clean.
 - Database migrations are retained because existing installations need the complete migration chain.
 - The legacy `brain-dump.db` filename is retained. Renaming it without a native file migration would make an existing installation appear empty.
-- Legacy preference keys are migrated to the original `mewmo.*` compatibility keys and then removed; those stable internal keys preserve existing user data after the LifeDesk rename.
+- Preference keys are namespaced `lifedesk.*`, migrated on first read from the older `mewmo.*` keys and then removed, so an upgrade keeps existing settings.
 - Deleting a financial activity record is an explicit user action with confirmation. If it represents an investment purchase, its linked lot and cash movement are removed together.
 
 ## Cleanup inventory

@@ -1,16 +1,18 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { categoryMeta } from '@/components/CategoryIcon';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { confirmAction } from '@/utils/confirm-action';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function ItemDetailScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -57,12 +59,12 @@ function Action({ icon, label, danger, onPress }: { icon: keyof typeof Feather.g
   return <Pressable accessibilityRole="button" onPress={onPress} style={styles.secondaryAction}><Feather name={icon} size={18} color={danger ? colors.danger : colors.secondary} /><Text style={[styles.secondaryText, danger && styles.dangerText]}>{label}</Text></Pressable>;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   kicker: { marginTop: 6, fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.5 },
-  title: { marginTop: 10, fontFamily: fonts.editorialSemiBold, fontSize: 38, lineHeight: 43, color: colors.ink },
+  title: { marginTop: 10, fontFamily: fonts.bodyBold, fontSize: 38, lineHeight: 43, color: colors.ink },
   done: { color: colors.muted, textDecorationLine: 'line-through' },
   editRow: { marginTop: 8, flexDirection: 'row', gap: 8 },
-  titleInput: { flex: 1, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.ink, fontFamily: fonts.editorialSemiBold, fontSize: 30, color: colors.ink },
+  titleInput: { flex: 1, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.ink, fontFamily: fonts.bodyBold, fontSize: 30, color: colors.ink },
   save: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.dark, alignItems: 'center', justifyContent: 'center' },
   metadata: { flexDirection: 'row', gap: 22, marginTop: 20, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: colors.border },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
@@ -86,6 +88,6 @@ const styles = StyleSheet.create({
   secondaryText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.secondary },
   dangerText: { color: colors.danger },
   notFound: { alignItems: 'center', paddingTop: 100 },
-  notFoundTitle: { fontFamily: fonts.editorialSemiBold, fontSize: 28, color: colors.ink },
+  notFoundTitle: { fontFamily: fonts.bodyBold, fontSize: 28, color: colors.ink },
   notFoundText: { marginTop: 8, fontFamily: fonts.body, fontSize: 14, color: colors.secondary },
-});
+}));

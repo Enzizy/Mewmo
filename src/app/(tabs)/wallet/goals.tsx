@@ -1,20 +1,22 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { SavingsGoalForm } from '@/features/wallet/finance-forms';
 import { useItems } from '@/store/ItemsContext';
 import { SavingsGoal } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
 import { formatPeso } from '@/utils/money';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function SavingsGoalsScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
-  const { savingsGoals, deleteGoal } = useItems();
+  const { savingsGoals, deleteGoal, reload } = useItems();
   const [editing, setEditing] = useState<SavingsGoal | 'new' | null>(null);
   const totalReserved = savingsGoals.filter((goal) => goal.active).reduce((sum, goal) => sum + goal.savedMinor, 0);
 
@@ -26,7 +28,7 @@ export default function SavingsGoalsScreen() {
   }));
 
   return (
-    <AppScreen tabbed assistant={!editing}>
+    <AppScreen tabbed assistant={!editing} onRefresh={reload}>
       <ScreenHeader back />
       <PageHeader title="Savings goals" supporting="Reserve part of your wallet for what matters without treating it as spent." action={<Pressable accessibilityRole="button" onPress={() => setEditing('new')} style={styles.add}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addText}>Add</Text></Pressable>} />
       <View style={styles.summary}><Text style={styles.summaryLabel}>Reserved across active goals</Text><Text selectable style={styles.summaryValue}>{formatPeso(totalReserved)}</Text><Text style={styles.summaryNote}>Included as a reservation in safe-to-spend. Your available wallet stays unchanged.</Text></View>
@@ -52,13 +54,13 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`));
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   add: { minHeight: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 22, backgroundColor: colors.ink },
   addText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper },
   summary: { marginTop: 20, padding: 18, borderRadius: radius.lg, backgroundColor: colors.ink },
-  summaryLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: '#CFCFCF' },
+  summaryLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.onInkMuted },
   summaryValue: { marginTop: 7, fontFamily: fonts.bodyBold, fontSize: 30, lineHeight: 36, fontVariant: ['tabular-nums'], color: colors.paper },
-  summaryNote: { marginTop: 6, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: '#CFCFCF' },
+  summaryNote: { marginTop: 6, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.onInkMuted },
   list: { marginTop: 24, borderTopWidth: 1, borderTopColor: colors.border },
   goal: { paddingVertical: 17, borderBottomWidth: 1, borderBottomColor: colors.border },
   goalTop: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -76,4 +78,4 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border },
   emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   emptyText: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
-});
+}));

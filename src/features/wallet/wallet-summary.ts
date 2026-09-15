@@ -1,5 +1,5 @@
-import { AppDataSnapshot, InvestmentAsset } from '@/types';
-import { calculateInvestmentReturn, calculateWalletBalance, estimatedValueMinor, isWalletTransactionTracked, sumDecimalQuantities } from '@/utils/money';
+import type { AppDataSnapshot, InvestmentAsset } from '../../types/index.ts';
+import { calculateInvestmentReturn, calculateWalletBalance, estimatedValueMinor, isWalletTransactionTracked, sumDecimalQuantities } from '../../utils/money.ts';
 
 export function getWalletSummary(data: Pick<AppDataSnapshot, 'transactions' | 'investments' | 'quotes' | 'walletSetup'>) {
   const now = new Date();

@@ -1,7 +1,8 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { StyleSheet, View } from 'react-native';
-import { colors } from '@/constants/theme';
+import { View } from 'react-native';
+import { colors, themedStyles } from '@/constants/theme';
 import { Category } from '@/types';
+import { useTheme } from '@/store/ThemeContext';
 
 export const categoryMeta: Record<Category, { label: string; color: string; soft: string }> = {
   task: { label: 'Task', color: colors.green, soft: colors.greenSoft },
@@ -11,6 +12,7 @@ export const categoryMeta: Record<Category, { label: string; color: string; soft
 };
 
 export function CategoryIcon({ category, size = 18, contained = true }: { category: Category; size?: number; contained?: boolean }) {
+  useTheme();
   const meta = categoryMeta[category];
   const icon = category === 'task'
     ? <Feather name="check" size={size} color={meta.color} />
@@ -24,6 +26,6 @@ export function CategoryIcon({ category, size = 18, contained = true }: { catego
   return <View style={[styles.container, { backgroundColor: meta.soft }]}>{icon}</View>;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   container: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-});
+}));

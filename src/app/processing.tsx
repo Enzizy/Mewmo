@@ -1,20 +1,22 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import * as FileSystem from 'expo-file-system/legacy';
 import { AppScreen } from '@/components/AppScreen';
 import { CategoryIcon, categoryMeta } from '@/components/CategoryIcon';
 import { PixelCat } from '@/components/PixelCat';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { organizeRecording } from '@/services/organizerApi';
 import { useItems } from '@/store/ItemsContext';
 import { Category } from '@/types';
+import { useTheme } from '@/store/ThemeContext';
 
 const categories: Category[] = ['task', 'reminder', 'idea', 'note'];
 
 export default function ProcessingScreen() {
+  useTheme();
   const router = useRouter();
   const { pendingRecording, processingError, setProcessingError, setPendingRecording, setPendingOrganizedDump, queueReviewProposal } = useItems();
   const [step, setStep] = useState(0);
@@ -90,9 +92,9 @@ export default function ProcessingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   header: { marginTop: 48, alignItems: 'center' },
-  title: { fontFamily: fonts.editorialSemiBold, fontSize: 34, color: colors.ink },
+  title: { fontFamily: fonts.bodyBold, fontSize: 34, color: colors.ink },
   support: { marginTop: 6, fontFamily: fonts.body, fontSize: 14, color: colors.secondary },
   diagram: { flex: 1, minHeight: 280, position: 'relative', alignItems: 'center', justifyContent: 'center' },
   mascot: { zIndex: 2, width: 116, height: 116, alignItems: 'center', justifyContent: 'center' },
@@ -114,10 +116,10 @@ const styles = StyleSheet.create({
   privacy: { marginVertical: 18, textAlign: 'center', fontFamily: fonts.body, fontSize: 11, color: colors.muted },
   errorContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 40 },
   errorIcon: { width: 60, height: 60, borderRadius: 30, backgroundColor: colors.terracottaSoft, alignItems: 'center', justifyContent: 'center' },
-  errorTitle: { marginTop: 22, fontFamily: fonts.editorialSemiBold, fontSize: 29, color: colors.ink },
+  errorTitle: { marginTop: 22, fontFamily: fonts.bodyBold, fontSize: 29, color: colors.ink },
   errorText: { maxWidth: 330, marginTop: 10, textAlign: 'center', fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.secondary },
   retry: { width: '100%', height: 54, marginTop: 30, borderRadius: 12, backgroundColor: colors.dark, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   retryText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.surface },
   homeButton: { minHeight: 48, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
   homeText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.secondary },
-});
+}));

@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { Tabs, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors, fonts } from '@/constants/theme';
+import { Pressable, Text, View } from 'react-native';
+import { colors, fonts, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 
 type TabIconName = keyof typeof Feather.glyphMap;
 
@@ -17,14 +18,15 @@ function TabIcon({ name, focused }: { name: TabIconName; focused: boolean }) {
 function CaptureButton() {
   const router = useRouter();
   return (
-    <Pressable accessibilityLabel="Start a voice capture" accessibilityRole="button" onPress={() => router.push('/record')} style={({ pressed }) => [styles.captureSlot, pressed && styles.pressed]}>
-      <View style={styles.captureButton}><Feather name="mic" size={27} color={colors.paper} /></View>
-      <Text style={styles.captureLabel}>Capture</Text>
+    <Pressable accessibilityLabel="Open your AI assistant" accessibilityRole="button" onPress={() => router.push('/chat')} style={({ pressed }) => [styles.captureSlot, pressed && styles.pressed]}>
+      <View style={styles.captureButton}><Feather name="message-circle" size={27} color={colors.paper} /></View>
+      <Text style={styles.captureLabel}>Chat</Text>
     </Pressable>
   );
 }
 
 export default function TabsLayout() {
+  useTheme();
   const router = useRouter();
 
   const rootTab = (href: '/' | '/wallet' | '/tasks' | '/tools') => ({
@@ -49,14 +51,14 @@ export default function TabsLayout() {
     >
       <Tabs.Screen name="index" listeners={rootTab('/')} options={{ title: 'Home', tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} /> }} />
       <Tabs.Screen name="wallet" listeners={rootTab('/wallet')} options={{ title: 'Wallet', tabBarIcon: ({ focused }) => <TabIcon name="credit-card" focused={focused} /> }} />
-      <Tabs.Screen name="capture" options={{ title: 'Capture', tabBarButton: () => <CaptureButton /> }} />
+      <Tabs.Screen name="capture" options={{ title: 'Chat', tabBarButton: () => <CaptureButton /> }} />
       <Tabs.Screen name="tasks" listeners={rootTab('/tasks')} options={{ title: 'Tasks', tabBarIcon: ({ focused }) => <TabIcon name="check-square" focused={focused} /> }} />
       <Tabs.Screen name="tools" listeners={rootTab('/tools')} options={{ title: 'Tools', tabBarIcon: ({ focused }) => <TabIcon name="grid" focused={focused} /> }} />
     </Tabs>
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   bar: { minHeight: 68, backgroundColor: colors.paper, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 5, paddingBottom: 6 },
   label: { fontFamily: fonts.bodyMedium, fontSize: 10, lineHeight: 13 },
   iconWrap: { width: 34, height: 28, alignItems: 'center', justifyContent: 'center' },
@@ -65,4 +67,4 @@ const styles = StyleSheet.create({
   captureButton: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink, borderWidth: 4, borderColor: colors.paper },
   captureLabel: { marginTop: 1, fontFamily: fonts.bodyMedium, fontSize: 10, lineHeight: 13, color: colors.ink },
   pressed: { opacity: 0.72, transform: [{ scale: 0.97 }] },
-});
+}));

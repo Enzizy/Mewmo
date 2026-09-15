@@ -1,25 +1,29 @@
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { InvestmentMark } from '@/components/InvestmentMark';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { InvestmentForm, QuoteForm } from '@/features/wallet/finance-forms';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { useItems } from '@/store/ItemsContext';
 import { DisplayCurrency, formatMoney } from '@/utils/money';
+import { useTheme } from '@/store/ThemeContext';
 
 type FormKind = 'investment' | 'quote' | null;
 
 export default function InvestmentsScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const params = useLocalSearchParams<{ action?: string }>();
   const data = useItems();
-  const summary = getWalletSummary(data);
+  const { transactions, investments, quotes, walletSetup } = data;
+  // Recomputes BigInt sums across every lot, so it must not run on each keystroke.
+  const summary = useMemo(() => getWalletSummary({ transactions, investments, quotes, walletSetup }), [investments, quotes, transactions, walletSetup]);
   const [form, setForm] = useState<FormKind>(params.action === 'add' ? 'investment' : null);
   const [currency, setCurrency] = useState<DisplayCurrency>('PHP');
   const [refreshing, setRefreshing] = useState(false);
@@ -43,7 +47,7 @@ export default function InvestmentsScreen() {
   };
 
   return (
-    <AppScreen tabbed assistant={!form}>
+    <AppScreen tabbed assistant={!form} onRefresh={data.reload}>
       <ScreenHeader back />
       <PageHeader title="Investments" supporting="Record BTC and VOO purchases, then refresh prices to estimate what they are worth now." action={<Pressable accessibilityRole="button" onPress={() => setForm('investment')} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addButtonText}>Add</Text></Pressable>} />
 
@@ -80,7 +84,7 @@ function allocationAccessibilityLabel(positions: ReturnType<typeof getWalletSumm
   return `Portfolio allocation: ${positions.map((position) => `${position.asset} ${Math.round(((position.estimated ?? position.recorded) / total) * 100)} percent`).join(', ')}`;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   addButton: { minHeight: 44, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: radius.full, backgroundColor: colors.ink },
   addButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper },
   toolbar: { marginTop: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
@@ -142,4 +146,4 @@ const styles = StyleSheet.create({
   emptyText: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.48 },
-});
+}));

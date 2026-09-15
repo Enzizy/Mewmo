@@ -1,15 +1,16 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { AppScreen } from '@/components/AppScreen';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Waveform } from '@/components/Waveform';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { confirmAction } from '@/utils/confirm-action';
+import { useTheme } from '@/store/ThemeContext';
 
 const recordingOptions = { ...RecordingPresets.HIGH_QUALITY, directory: 'document' as const, isMeteringEnabled: true };
 
@@ -19,6 +20,7 @@ function formatTime(milliseconds: number) {
 }
 
 export default function RecordScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const router = useRouter();
   const { setPendingRecording } = useItems();
@@ -70,7 +72,7 @@ export default function RecordScreen() {
         durationSeconds: Math.max(1, Math.round(recorderState.durationMillis / 1000)),
         mimeType: 'audio/m4a',
       });
-      router.replace('/processing');
+      router.dismissTo('/chat');
     } catch (error) {
       setStopping(false);
       showDialog({ title: 'Could not save recording', message: error instanceof Error ? error.message : 'Please try again.', tone: 'danger' });
@@ -91,7 +93,7 @@ export default function RecordScreen() {
       <View style={styles.heading}>
         <View style={styles.liveRow}><View style={[styles.liveDot, paused && styles.pausedDot]} /><Text style={styles.kicker}>{starting ? 'Preparing...' : paused ? 'Paused' : 'Listening...'}</Text></View>
         <Text style={styles.title}>Speak naturally.</Text>
-        <Text style={styles.support}>I’ll organize it for you.</Text>
+        <Text style={styles.support}>Ask a question or tell me what you need.</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={paused ? 'Resume recording' : 'Pause recording'} onPress={togglePause} style={styles.visual}>
         <View style={styles.outerCircle}><View style={styles.innerCircle}><Waveform active={!starting && !paused} /></View></View>
@@ -99,7 +101,7 @@ export default function RecordScreen() {
       <Text style={styles.duration}>{formatTime(recorderState.durationMillis)}</Text>
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" disabled={starting || stopping} onPress={stopRecording} style={({ pressed }) => [styles.stop, (starting || stopping) && styles.disabled, pressed && styles.pressed]}>
-          <Feather name="square" size={17} color={colors.surface} fill={colors.surface} /><Text style={styles.stopText}>{stopping ? 'Saving...' : 'Stop recording'}</Text>
+          <Feather name="check" size={18} color={colors.surface} /><Text style={styles.stopText}>{stopping ? 'Finishing...' : 'Use this recording'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={togglePause} style={styles.pause}><Text style={styles.pauseText}>Tap to {paused ? 'resume' : 'pause'}</Text></Pressable>
       </View>
@@ -107,13 +109,13 @@ export default function RecordScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   heading: { alignItems: 'center', marginTop: 8 },
   liveRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.terracotta },
   pausedDot: { backgroundColor: colors.mustard },
   kicker: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.secondary, letterSpacing: 0.4 },
-  title: { marginTop: 12, fontFamily: fonts.editorialSemiBold, fontSize: 32, color: colors.ink },
+  title: { marginTop: 12, fontFamily: fonts.bodyBold, fontSize: 32, color: colors.ink },
   support: { marginTop: 5, fontFamily: fonts.body, fontSize: 15, color: colors.secondary },
   visual: { flex: 1, minHeight: 260, alignItems: 'center', justifyContent: 'center' },
   outerCircle: { width: 228, height: 228, borderRadius: 114, borderWidth: 1, borderColor: colors.terracotta, padding: 15 },
@@ -126,4 +128,4 @@ const styles = StyleSheet.create({
   pauseText: { fontFamily: fonts.body, fontSize: 12, color: colors.secondary },
   disabled: { opacity: 0.55 },
   pressed: { transform: [{ scale: 0.97 }] },
-});
+}));

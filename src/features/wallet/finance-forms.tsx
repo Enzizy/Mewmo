@@ -1,29 +1,36 @@
 import { Feather } from '@expo/vector-icons';
 import { PropsWithChildren, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
-import { InvestmentAsset, MoneyTransactionType, MonthlyBudget, RecurringRule, RecurringRuleKind, SavingsGoal } from '@/types';
+import { FinancialTransaction, InvestmentAsset, MoneyTransactionType, MonthlyBudget, RecurringRule, RecurringRuleKind, SavingsGoal } from '@/types';
 import { appendDecimalPoint, normalizeDecimalQuantityInput, parsePesoToMinor } from '@/utils/money';
 import { localDateKey, localNoonIso, parseMonthlyDays } from '@/utils/recurrence';
+import { useTheme } from '@/store/ThemeContext';
 
 type FormCompletion = () => void;
 
-export function TransactionForm({ initialType = 'expense', initialTitle = '', initialCategory, onDone, onCancel }: {
+export function TransactionForm({ initialType = 'expense', initialTitle = '', initialCategory, editing, onDone, onCancel }: {
   initialType?: Extract<MoneyTransactionType, 'income' | 'expense'>;
   initialTitle?: string;
   initialCategory?: string;
+  /** When supplied, the form edits this record in place instead of creating one. */
+  editing?: FinancialTransaction;
   onDone: FormCompletion;
   onCancel: FormCompletion;
 }) {
-  const { addTransaction } = useItems();
+  useTheme();
+  const { addTransaction, updateTransaction } = useItems();
   const { showDialog } = useAppDialog();
-  const type = initialType;
-  const [title, setTitle] = useState(initialTitle);
-  const [category, setCategory] = useState(initialCategory ?? (initialType === 'income' ? 'Income' : 'General'));
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(localDateKey(new Date()));
+  const type = editing?.type ?? initialType;
+  // An investment's cash movement takes its amount from the lot it belongs to.
+  const amountLocked = Boolean(editing && editing.type === 'investment');
+  const [title, setTitle] = useState(editing?.title ?? initialTitle);
+  const [category, setCategory] = useState(editing?.category ?? initialCategory ?? (initialType === 'income' ? 'Income' : 'General'));
+  const [amount, setAmount] = useState(editing ? String(editing.amountMinor / 100) : '');
+  const [date, setDate] = useState(editing ? localDateKey(new Date(editing.occurredAt)) : localDateKey(new Date()));
+  const [note, setNote] = useState(editing?.note ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +46,8 @@ export function TransactionForm({ initialType = 'expense', initialTitle = '', in
     setError(null);
     setSaving(true);
     try {
-      await addTransaction({ type, title, category, amountMinor, occurredAt });
+      if (editing) await updateTransaction(editing.id, { title, category, amountMinor, occurredAt, note });
+      else await addTransaction({ type: type as Extract<MoneyTransactionType, 'income' | 'expense'>, title, category, amountMinor, occurredAt, note });
       onDone();
     } catch (error) {
       const detail = message(error);
@@ -49,19 +57,28 @@ export function TransactionForm({ initialType = 'expense', initialTitle = '', in
     }
   };
 
+  const heading = editing ? 'Edit record' : type === 'income' ? 'Add money' : 'Record expense';
+  const description = editing
+    ? 'Changes keep this record’s history, including any scheduled entry it is matched to.'
+    : type === 'income'
+      ? 'Use this for salary, deposits, or a cash adjustment after your tracking start date.'
+      : 'Record money that left your wallet.';
+
   return (
-    <FormCard title={type === 'income' ? 'Add money' : 'Record expense'} description={type === 'income' ? 'Use this for salary, deposits, or a cash adjustment after your tracking start date.' : 'Record money that left your wallet.'} onClose={onCancel}>
+    <FormCard title={heading} description={description} onClose={onCancel}>
       <Field label="Description" value={title} onChangeText={setTitle} placeholder={type === 'income' ? 'Salary or starting balance' : 'Groceries or internet bill'} />
       <Field label="Category" value={category} onChangeText={setCategory} placeholder="Income, Groceries, Utilities…" />
-      <Field label="Amount" hint="Stored in Philippine pesos" value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
+      <Field label="Amount" hint={amountLocked ? 'Set by the linked investment purchase' : 'Stored in Philippine pesos'} editable={!amountLocked} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="0.00" prefix="₱" />
       <Field label="Date" hint="YYYY-MM-DD" value={date} onChangeText={setDate} placeholder="2026-08-24" />
+      <Field label="Note" hint="Optional" value={note} onChangeText={setNote} placeholder="Anything you want to remember about this" />
       {error ? <View style={styles.error}><Feather name="alert-circle" size={16} color={colors.danger} /><Text style={styles.errorText}>{error}</Text></View> : null}
-      <SubmitButton label={saving ? 'Saving…' : type === 'income' ? 'Add money' : 'Save expense'} disabled={saving} onPress={save} />
+      <SubmitButton label={saving ? 'Saving…' : editing ? 'Save changes' : type === 'income' ? 'Add money' : 'Save expense'} disabled={saving} onPress={save} />
     </FormCard>
   );
 }
 
 export function WalletSetupForm({ onDone, onCancel }: { onDone: FormCompletion; onCancel: FormCompletion }) {
+  useTheme();
   const { walletSetup, setWalletSetup } = useItems();
   const { showDialog } = useAppDialog();
   const [amount, setAmount] = useState(walletSetup ? String(walletSetup.openingBalanceMinor / 100) : '0');
@@ -102,6 +119,7 @@ export function WalletSetupForm({ onDone, onCancel }: { onDone: FormCompletion; 
 }
 
 export function InvestmentForm({ onDone, onCancel }: { onDone: FormCompletion; onCancel: FormCompletion }) {
+  useTheme();
   const { addInvestment, walletSetup } = useItems();
   const { showDialog } = useAppDialog();
   const [asset, setAsset] = useState<InvestmentAsset>('BTC');
@@ -143,6 +161,7 @@ export function InvestmentForm({ onDone, onCancel }: { onDone: FormCompletion; o
 }
 
 export function QuoteForm({ onDone, onCancel }: { onDone: FormCompletion; onCancel: FormCompletion }) {
+  useTheme();
   const { updateQuote } = useItems();
   const { showDialog } = useAppDialog();
   const [asset, setAsset] = useState<InvestmentAsset>('BTC');
@@ -165,6 +184,7 @@ export function QuoteForm({ onDone, onCancel }: { onDone: FormCompletion; onCanc
 }
 
 export function RecurringRuleForm({ initialRule, onDone, onCancel, mode = 'automation' }: { initialRule?: RecurringRule; onDone: FormCompletion; onCancel: FormCompletion; mode?: 'automation' | 'subscription' }) {
+  useTheme();
   const { addRecurringRule, updateRecurringRule } = useItems();
   const { showDialog } = useAppDialog();
   const [kind, setKind] = useState<RecurringRuleKind>(mode === 'subscription' ? 'expense' : initialRule?.kind === 'expense' ? 'income' : initialRule?.kind ?? 'income');
@@ -216,6 +236,7 @@ export function RecurringRuleForm({ initialRule, onDone, onCancel, mode = 'autom
 }
 
 export function BudgetForm({ initialBudget, onDone, onCancel }: { initialBudget?: MonthlyBudget; onDone: FormCompletion; onCancel: FormCompletion }) {
+  useTheme();
   const { saveBudget } = useItems();
   const { showDialog } = useAppDialog();
   const [category, setCategory] = useState(initialBudget?.category ?? '');
@@ -238,6 +259,7 @@ export function BudgetForm({ initialBudget, onDone, onCancel }: { initialBudget?
 }
 
 export function SavingsGoalForm({ initialGoal, onDone, onCancel }: { initialGoal?: SavingsGoal; onDone: FormCompletion; onCancel: FormCompletion }) {
+  useTheme();
   const { saveGoal } = useItems();
   const { showDialog } = useAppDialog();
   const [name, setName] = useState(initialGoal?.name ?? '');
@@ -294,7 +316,8 @@ function ChoiceGroup<T extends string>({ label, options, value, onChange }: { la
 }
 
 function Field({ label, hint, prefix, ...inputProps }: { label: string; hint?: string; prefix?: string } & React.ComponentProps<typeof TextInput>) {
-  return <View><View style={styles.fieldHeader}><Text style={styles.label}>{label}</Text>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View><View style={styles.inputShell}>{prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}<TextInput placeholderTextColor={colors.muted} style={styles.input} {...inputProps} accessibilityLabel={inputProps.accessibilityLabel ?? label} /></View></View>;
+  const readOnly = inputProps.editable === false;
+  return <View><View style={styles.fieldHeader}><Text style={styles.label}>{label}</Text>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View><View style={[styles.inputShell, readOnly && styles.inputShellReadOnly]}>{prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}<TextInput placeholderTextColor={colors.muted} style={[styles.input, readOnly && styles.inputReadOnly]} {...inputProps} accessibilityLabel={inputProps.accessibilityLabel ?? label} /></View></View>;
 }
 
 function QuantityField({ label, hint, value, onChangeText, placeholder }: { label: string; hint: string; value: string; onChangeText: (value: string) => void; placeholder: string }) {
@@ -345,7 +368,7 @@ function validDate(value: string) {
 
 function message(error: unknown) { return error instanceof Error ? error.message : 'Try again.'; }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   card: { marginTop: 20, padding: 18, gap: 17, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   cardCopy: { flex: 1 },
@@ -356,6 +379,8 @@ const styles = StyleSheet.create({
   label: { fontFamily: fonts.bodySemiBold, fontSize: 12, lineHeight: 16, color: colors.ink },
   hint: { flex: 1, textAlign: 'right', fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.muted },
   inputShell: { minHeight: 50, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface },
+  inputShellReadOnly: { borderColor: colors.border, backgroundColor: colors.background },
+  inputReadOnly: { color: colors.secondary },
   prefix: { marginRight: 7, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.secondary },
   input: { flex: 1, minHeight: 48, paddingVertical: 10, fontFamily: fonts.body, fontSize: 15, color: colors.ink },
   decimalButton: { width: 44, height: 44, marginRight: -8, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm, backgroundColor: colors.paper },
@@ -368,10 +393,10 @@ const styles = StyleSheet.create({
   choiceTextSelected: { fontFamily: fonts.bodySemiBold, color: colors.ink },
   note: { fontFamily: fonts.body, fontSize: 11, lineHeight: 17, color: colors.secondary },
   submit: { minHeight: 52, paddingHorizontal: 17, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.md, backgroundColor: colors.ink },
-  submitPressed: { backgroundColor: '#2A2A2A' },
+  submitPressed: { backgroundColor: colors.inkPressed },
   submitText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper },
   disabled: { opacity: 0.48 },
   error: { padding: 11, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: radius.sm, backgroundColor: colors.dangerSoft },
   errorText: { flex: 1, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.danger },
   pressed: { opacity: 0.7 },
-});
+}));

@@ -2,18 +2,20 @@ import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { HOME_SHORTCUTS, HOME_WIDGETS } from '@/features/home/home-preferences';
 import { useItems } from '@/store/ItemsContext';
 import type { HomePreferences, HomeShortcutId, HomeWidgetId } from '@/types';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function HomeCustomizeScreen() {
+  useTheme();
   const router = useRouter();
   const { showDialog } = useAppDialog();
   const { hydrated, homePreferences, updateHomePreferences } = useItems();
@@ -67,6 +69,6 @@ export default function HomeCustomizeScreen() {
   </AppScreen>;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   loading: { minHeight: 240, alignItems: 'center', justifyContent: 'center', gap: 12 }, loadingText: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary }, balanceRow: { minHeight: 82, marginTop: 20, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper }, main: { flex: 1, minWidth: 0 }, balanceTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink }, balanceDetail: { marginTop: 4, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary }, section: { marginTop: 32 }, list: { marginTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, widget: { minHeight: 94, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: colors.border }, reorder: { width: 42 }, iconButton: { width: 42, height: 36, alignItems: 'center', justifyContent: 'center' }, widgetTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink }, widgetDetail: { marginTop: 2, fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.secondary }, compact: { alignSelf: 'flex-start', minHeight: 34, marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 6 }, checkbox: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 5, borderWidth: 1, borderColor: colors.borderStrong }, checkboxOn: { borderColor: colors.ink, backgroundColor: colors.ink }, compactLabel: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.secondary }, disabled: { opacity: 0.35 }, chips: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, chip: { minHeight: 42, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 21, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper }, chipSelected: { borderColor: colors.ink, backgroundColor: colors.ink }, chipText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary }, chipTextSelected: { color: colors.paper }, save: { minHeight: 44, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: radius.full, backgroundColor: colors.ink }, saveText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper },
-});
+}));

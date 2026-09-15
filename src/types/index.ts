@@ -95,6 +95,7 @@ export type FinancialTransaction = {
   category: string;
   amountMinor: number;
   occurredAt: string;
+  note?: string;
   sourceDumpId?: string;
   linkedInvestmentId?: string;
 };

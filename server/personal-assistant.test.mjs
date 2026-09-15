@@ -10,8 +10,9 @@ test('accepts a bounded personal question and recent conversation', () => {
 });
 
 test('rejects missing and oversized assistant requests', () => {
-  assert.throws(() => validateAssistantRequest({ context: {} }), /between 1 and 500/);
+  assert.throws(() => validateAssistantRequest({ context: {} }), /between 1 and 4,000/);
   assert.throws(() => validateAssistantRequest({ message: 'x', context: { value: 'a'.repeat(200_001) } }), /too large/);
+  assert.throws(() => validateAssistantRequest({ message: 'x'.repeat(4_001), context: {} }), /between 1 and 4,000/);
 });
 
 test('defines current LifeDesk finance and action boundaries', () => {
@@ -22,6 +23,12 @@ test('defines current LifeDesk finance and action boundaries', () => {
   assert.match(assistantSystemInstruction, /PHP centavos/);
   assert.match(assistantSystemInstruction, /saved forecast/);
   assert.match(assistantSystemInstruction, /do not place brokerage orders/i);
+  assert.match(assistantSystemInstruction, /general questions/i);
+  assert.match(assistantSystemInstruction, /amount, date, or destination/i);
+  assert.match(assistantSystemInstruction, /permissionGranted/);
+  assert.match(assistantSystemInstruction, /tomorrow at 9/);
+  assert.match(assistantSystemInstruction, /planned transfer, trade/i);
+  assert.match(assistantSystemInstruction, /Goal allocations, edits, and deletions are unsupported/i);
 });
 
 test('keeps assistant actions as validated review proposals', () => {

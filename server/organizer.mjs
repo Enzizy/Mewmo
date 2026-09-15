@@ -23,6 +23,37 @@ export function normalizeAudioMimeType(value) {
   return SUPPORTED_AUDIO_MIME_TYPES.has(mimeType) ? mimeType : 'audio/m4a';
 }
 
+export function validateAudioRequest(body) {
+  if (!body || typeof body !== 'object') throw new Error('Request body is required.');
+  if (typeof body.audioBase64 !== 'string' || body.audioBase64.length < 20) throw new Error('A valid audio recording is required.');
+  if (body.audioBase64.length > 27 * 1024 * 1024) throw new Error('The recording is too large. Keep it under 15 minutes.');
+  const mimeType = normalizeAudioMimeType(body.mimeType);
+  return {
+    audioBase64: body.audioBase64,
+    mimeType,
+    now: typeof body.now === 'string' ? body.now : new Date().toISOString(),
+    timeZone: typeof body.timeZone === 'string' ? body.timeZone.slice(0, 100) : 'UTC',
+    locale: typeof body.locale === 'string' ? body.locale.slice(0, 40) : 'en',
+  };
+}
+
+export function buildTranscriptionPrompt({ now, timeZone, locale }) {
+  return `Transcribe this private LifeDesk voice recording faithfully.
+
+Current local datetime: ${now}
+User timezone: ${timeZone}
+User locale: ${locale}
+
+Return only the spoken transcript as plain text. Preserve the language or languages spoken, including mixed English and Filipino/Tagalog. Do not summarize, classify, interpret, or extract tasks, reminders, financial records, or any other app actions. Do not add words that were not spoken.`;
+}
+
+export function validateTranscriptResponse(value) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('Gemini did not return a transcript.');
+  const transcript = value.trim();
+  if (transcript.length > 4_000) throw new Error('The recording transcript is too long. Please record a shorter message of 4,000 characters or fewer.');
+  return transcript;
+}
+
 export const responseSchema = {
   type: 'object',
   properties: {

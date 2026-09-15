@@ -1,10 +1,12 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { ThoughtItem } from '@/types';
 import { categoryMeta } from './CategoryIcon';
+import { useTheme } from '@/store/ThemeContext';
 
 export function TimelineItem({ item, last = false }: { item: ThoughtItem; last?: boolean }) {
+  useTheme();
   const router = useRouter();
   const meta = categoryMeta[item.category];
   return (
@@ -22,7 +24,7 @@ export function TimelineItem({ item, last = false }: { item: ThoughtItem; last?:
   );
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   row: { minHeight: 78, flexDirection: 'row' },
   rail: { width: 24, alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, marginTop: 7 },
@@ -31,4 +33,4 @@ const styles = StyleSheet.create({
   main: { flex: 1, paddingBottom: 20 },
   title: { fontFamily: fonts.bodyMedium, fontSize: 15, lineHeight: 20, color: colors.ink },
   category: { marginTop: 4, fontFamily: fonts.bodyMedium, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.7 },
-});
+}));

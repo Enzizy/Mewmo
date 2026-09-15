@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import Animated, { Easing, SharedValue, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
-import { colors } from '@/constants/theme';
+import { colors, themedStyles } from '@/constants/theme';
+import { useTheme } from '@/store/ThemeContext';
 
 const bars = [10, 18, 28, 42, 24, 36, 18, 46, 32, 16, 26, 12];
 
 export function Waveform({ active = false, light = false, compact = false }: { active?: boolean; light?: boolean; compact?: boolean }) {
+  useTheme();
   const motion = useSharedValue(0);
   useEffect(() => {
     motion.value = active ? withRepeat(withTiming(1, { duration: 760, easing: Easing.inOut(Easing.ease) }), -1, true) : withTiming(0);
@@ -25,8 +27,8 @@ function WaveBar({ height, index, motion, light }: { height: number; index: numb
   return <Animated.View style={[styles.bar, { height, backgroundColor: light ? colors.surface : colors.dark }, animatedStyle]} />;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   row: { height: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   compact: { height: 28, gap: 3 },
   bar: { width: 3, borderRadius: 2 },
-});
+}));

@@ -1,15 +1,15 @@
 {
   "expo": {
     "name": "LifeDesk",
-    "slug": "mewmo",
+    "slug": "lifedesk",
     "scheme": "lifedesk",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/brain-dump-icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.enzizy.mewmo",
+      "bundleIdentifier": "com.enzizy.lifedesk",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -27,9 +27,12 @@
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.CAMERA",
-        "android.permission.SCHEDULE_EXACT_ALARM"
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
       ],
-      "package": "com.enzizy.mewmo"
+      "package": "com.enzizy.lifedesk"
     },
     "web": {
       "bundler": "metro",
@@ -94,8 +97,9 @@
         }
       },
       "eas": {
-        "projectId": "07002e24-d49d-4063-8533-80edce121d99"
+        "projectId": "f8eafeb4-f17e-4af9-a778-8662d1b0fe22"
       }
-    }
+    },
+    "owner": "enzizyy"
   }
 }

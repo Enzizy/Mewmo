@@ -1,17 +1,19 @@
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { deleteProcessedPdf, exportPdf, imagesToPdf, inspectPdf, mergePdfs, pickPdfDocuments, ProcessedPdf, SelectedPdf, selectPdfPages } from '@/services/pdfTools';
+import { useTheme } from '@/store/ThemeContext';
 
 type Mode = 'images' | 'merge' | 'pages';
 
 export default function PdfToolsScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const [mode, setMode] = useState<Mode | null>(null);
   const [selected, setSelected] = useState<SelectedPdf[]>([]);
@@ -81,8 +83,8 @@ function ToolAction({ icon, title, detail, onPress }: { icon: keyof typeof Feath
 function PrimaryButton({ label, onPress }: { label: string; onPress: () => void }) { return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.primary, pressed && styles.primaryPressed]}><Text style={styles.primaryText}>{label}</Text><Feather name="arrow-right" size={18} color={colors.paper} /></Pressable>; }
 function formatBytes(value: number | null) { if (value == null) return 'Size unavailable'; if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`; return `${(value / 1024 / 1024).toFixed(1)} MB`; }
 
-const styles = StyleSheet.create({
-  privacy: { minHeight: 76, marginTop: 22, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, backgroundColor: '#F0F7F3', borderWidth: 1, borderColor: '#D8EADF' },
+const styles = themedStyles(() => ({
+  privacy: { minHeight: 76, marginTop: 22, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, backgroundColor: colors.greenSoft, borderWidth: 1, borderColor: colors.border },
   privacyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink },
   privacyText: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary },
   main: { flex: 1, minWidth: 0 },
@@ -117,4 +119,4 @@ const styles = StyleSheet.create({
   saveText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper },
   limit: { marginTop: 22, fontFamily: fonts.body, fontSize: 10, lineHeight: 16, color: colors.muted },
   pressed: { opacity: 0.7, transform: [{ scale: 0.99 }] },
-});
+}));

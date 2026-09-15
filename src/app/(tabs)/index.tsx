@@ -1,12 +1,12 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { PageHeader } from '@/components/page-header';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { USER_DISPLAY_NAME } from '@/constants/brand';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { HOME_SHORTCUTS } from '@/features/home/home-preferences';
@@ -18,8 +18,10 @@ import { nextScheduledDate } from '@/utils/recurrence';
 import { localDateInput, upcomingReminders } from '@/utils/reminders';
 import { roundedTemperature, weatherIcon, weatherLabel } from '@/utils/weather';
 import { timeGreeting } from '@/utils/greeting';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function HomeScreen() {
+  useTheme();
   const router = useRouter();
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherLoaded, setWeatherLoaded] = useState(false);
@@ -67,7 +69,7 @@ export default function HomeScreen() {
   const compact = (id: HomeWidgetId) => homePreferences.compact.includes(id);
   const visibleWidgets = homePreferences.order.filter((id) => !homePreferences.hidden.includes(id));
   const widget = (id: HomeWidgetId) => {
-    if (id === 'review') return <Pressable key={id} accessibilityRole="button" onPress={() => router.push('/wallet/inbox' as Href)} style={({ pressed }) => [styles.reviewWidget, pressed && styles.pressed]}><View style={[styles.weatherIcon, pendingReviewCount > 0 && styles.reviewActive]}><Feather name="inbox" size={20} color={pendingReviewCount > 0 ? colors.paper : colors.ink} /></View><View style={styles.weatherMain}><Text style={styles.weatherLocation}>{pendingReviewCount ? `${pendingReviewCount} waiting for review` : 'Review inbox is clear'}</Text><Text style={styles.weatherCondition}>{pendingReviewCount ? 'Confirm scheduled money and AI suggestions.' : 'Nothing will change without your confirmation.'}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
+    if (id === 'review') return <Pressable key={id} accessibilityRole="button" onPress={() => router.push('/wallet/inbox' as Href)} style={({ pressed }) => [styles.weatherWidget, pressed && styles.pressed]}><View style={[styles.weatherIcon, pendingReviewCount > 0 && styles.reviewActive]}><Feather name="inbox" size={20} color={pendingReviewCount > 0 ? colors.paper : colors.ink} /></View><View style={styles.weatherMain}><Text style={styles.weatherLocation}>{pendingReviewCount ? `${pendingReviewCount} waiting for review` : 'Review inbox is clear'}</Text><Text style={styles.weatherCondition}>{pendingReviewCount ? 'Confirm scheduled money and AI suggestions.' : 'Nothing will change without your confirmation.'}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
     if (id === 'weather') return <Pressable key={id} accessibilityRole="button" accessibilityLabel={weather ? `Open weather for ${weather.location.name}` : 'Choose a weather location'} onPress={() => router.push('/tools/weather' as Href)} style={({ pressed }) => [styles.weatherWidget, pressed && styles.pressed]}><View style={styles.weatherIcon}><Feather name={weather ? weatherIcon(weather.current.code, weather.current.isDay) : 'cloud'} size={21} color={colors.ink} /></View><View style={styles.weatherMain}>{weather ? <><Text numberOfLines={1} style={styles.weatherLocation}>{weather.location.name}</Text><Text numberOfLines={1} style={styles.weatherCondition}>{weatherLabel(weather.current.code)}{compact(id) ? '' : ` · H ${roundedTemperature(weather.days[0].high)} / L ${roundedTemperature(weather.days[0].low)}`}</Text></> : <><Text style={styles.weatherLocation}>{weatherLoaded ? 'Add your weather' : 'Loading weather…'}</Text><Text style={styles.weatherCondition}>{weatherLoaded ? 'Choose a city for your Home forecast.' : 'Checking your saved city.'}</Text></>}</View>{weather ? <Text style={styles.weatherTemp}>{roundedTemperature(weather.current.temperature)}</Text> : null}<Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
     if (id === 'money') {
       const visible = homePreferences.balancesVisible;
@@ -93,7 +95,7 @@ export default function HomeScreen() {
     return null;
   };
 
-  return <AppScreen assistant>
+  return <AppScreen assistant onRefresh={data.reload}>
     <PageHeader layout="stacked" eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)} title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`} supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
     {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : visibleWidgets.map(widget)}
   </AppScreen>;
@@ -141,26 +143,26 @@ function formatReminderDate(date: Date) {
   return `${prefix} · ${new Intl.DateTimeFormat('en-PH', { timeStyle: 'short' }).format(date)}`;
 }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   headerActions: { flexDirection: 'row', gap: 8 },
   profileButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   loading: { minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
   weatherWidget: { minHeight: 76, marginTop: 20, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
-  reviewWidget: { minHeight: 76, marginTop: 20, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+
   reviewActive: { backgroundColor: colors.ink },
   weatherIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentSoft },
   weatherMain: { flex: 1, minWidth: 0 },
   weatherLocation: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
-  weatherCondition: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary },
+  weatherCondition: { marginTop: 3, fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: colors.secondary },
   weatherTemp: { fontFamily: fonts.bodyBold, fontSize: 22, fontVariant: ['tabular-nums'], color: colors.ink },
   moneySurface: { marginTop: 12, padding: 20, paddingBottom: 8, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   moneyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  moneyEyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 9, letterSpacing: 1.2, color: colors.muted },
+  moneyEyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 12, letterSpacing: 1, color: colors.secondary },
   moneyLabel: { marginTop: 3, fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.secondary },
   openIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   moneyTotal: { marginTop: 8, fontFamily: fonts.bodyBold, fontSize: 30, lineHeight: 37, letterSpacing: -0.9, fontVariant: ['tabular-nums'], color: colors.ink },
-  moneyNote: { marginTop: 3, fontFamily: fonts.body, fontSize: 10, lineHeight: 15, color: colors.secondary },
+  moneyNote: { marginTop: 6, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
   accountList: { marginTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
   accountRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: colors.border },
   accountRowLast: { borderBottomWidth: 0 },
@@ -169,7 +171,7 @@ const styles = StyleSheet.create({
   accountIconDark: { backgroundColor: colors.ink },
   accountMain: { flex: 1, minWidth: 0 },
   accountLabel: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
-  accountDetail: { marginTop: 2, fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.secondary },
+  accountDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
   accountValue: { maxWidth: '32%', fontFamily: fonts.bodySemiBold, fontSize: 13, fontVariant: ['tabular-nums'], color: colors.ink },
   section: { marginTop: 34 },
   goalSurface: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
@@ -179,7 +181,7 @@ const styles = StyleSheet.create({
   goalPercent: { fontFamily: fonts.bodySemiBold, fontSize: 11, fontVariant: ['tabular-nums'], color: colors.ink },
   goalTrack: { height: 5, marginTop: 9, overflow: 'hidden', borderRadius: 3, backgroundColor: colors.border },
   goalFill: { height: '100%', borderRadius: 3, backgroundColor: colors.accent },
-  goalMeta: { marginTop: 6, fontFamily: fonts.body, fontSize: 10, color: colors.secondary },
+  goalMeta: { marginTop: 6, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
   scheduleSurface: { marginTop: 12, minHeight: 82, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   scheduleDate: { width: 48, height: 56, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 1, backgroundColor: colors.accentSoft },
   scheduleDay: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.ink },
@@ -203,9 +205,9 @@ const styles = StyleSheet.create({
   shortcutGrid: { marginTop: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   shortcut: { width: '48%', minHeight: 64, flexGrow: 1, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   shortcutIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  shortcutTitle: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 11, lineHeight: 15, color: colors.ink },
+  shortcutTitle: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 13, lineHeight: 18, color: colors.ink },
   emptyCopy: { flex: 1 },
   emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   emptyText: { marginTop: 3, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.secondary },
   pressed: { opacity: 0.72 },
-});
+}));

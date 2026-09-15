@@ -1,25 +1,29 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, useRouter } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { SectionHeading } from '@/components/section-heading';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { calculateFinancialForecast } from '@/features/wallet/financial-forecast';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { useItems } from '@/store/ItemsContext';
 import { formatPeso } from '@/utils/money';
+import { useTheme } from '@/store/ThemeContext';
 
 export default function ForecastScreen() {
+  useTheme();
   const router = useRouter();
   const data = useItems();
-  const summary = getWalletSummary(data);
-  const forecast = calculateFinancialForecast(data, summary.balance);
+  // Both walk every transaction and investment lot; keep them off the render path.
+  const summary = useMemo(() => getWalletSummary(data), [data]);
+  const forecast = useMemo(() => calculateFinancialForecast(data, summary.balance), [data, summary.balance]);
   const shortfall = Math.max(0, -forecast.projectedBalanceMinor);
 
   return (
-    <AppScreen tabbed assistant>
+    <AppScreen tabbed assistant onRefresh={data.reload}>
       <ScreenHeader back />
       <PageHeader title="Forecast" supporting="See what is safely available after pending and upcoming commitments, budgets, and savings goals." />
 
@@ -58,13 +62,13 @@ export default function ForecastScreen() {
 function BreakdownRow({ label, value, emphasized = false }: { label: string; value: number; emphasized?: boolean }) { return <View style={styles.breakdownRow}><Text style={[styles.breakdownLabel, emphasized && styles.emphasized]}>{label}</Text><Text style={[styles.breakdownValue, emphasized && styles.emphasized]}>{value < 0 ? '−' : ''}{formatPeso(Math.abs(value))}</Text></View>; }
 function formatDate(value: string) { return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`)); }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   hero: { marginTop: 22, minHeight: 170, padding: 22, justifyContent: 'center', borderRadius: radius.lg, backgroundColor: colors.ink },
-  heroWarning: { backgroundColor: '#332218' },
+  heroWarning: { backgroundColor: colors.warningOnInk },
   heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  eyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 1.2, color: '#BDBDBD' },
+  eyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 1.2, color: colors.onInkMuted },
   heroValue: { marginTop: 17, fontFamily: fonts.bodyBold, fontSize: 40, letterSpacing: -1.2, fontVariant: ['tabular-nums'], color: colors.paper },
-  heroDetail: { marginTop: 8, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: '#C8C8C8' },
+  heroDetail: { marginTop: 8, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.onInkMuted },
   breakdown: { marginTop: 14, paddingHorizontal: 16, borderRadius: radius.md, backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border },
   breakdownRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
   breakdownLabel: { flex: 1, fontFamily: fonts.body, fontSize: 12, color: colors.secondary },
@@ -84,4 +88,4 @@ const styles = StyleSheet.create({
   actionText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.ink },
   note: { marginTop: 18, fontFamily: fonts.body, fontSize: 11, lineHeight: 17, color: colors.muted },
   pressed: { opacity: 0.72, transform: [{ scale: 0.99 }] },
-});
+}));

@@ -2,16 +2,17 @@ import { Feather } from '@expo/vector-icons';
 import { Host, Switch } from '@expo/ui';
 import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PageHeader } from '@/components/page-header';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, radius } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { ReminderFrequency, ThoughtItem } from '@/types';
 import { confirmAction } from '@/utils/confirm-action';
 import { localDateInput, reminderDateTime, reminderOccurrencesBetween } from '@/utils/reminders';
+import { useTheme } from '@/store/ThemeContext';
 
 type RepeatChoice = 'none' | ReminderFrequency;
 const repeatChoices: { value: RepeatChoice; label: string }[] = [
@@ -19,9 +20,10 @@ const repeatChoices: { value: RepeatChoice; label: string }[] = [
 ];
 
 export default function CalendarScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const params = useLocalSearchParams<{ action?: string }>();
-  const { items, addReminder, updateReminder, toggleReminderEnabled, deleteItem, notificationEnabled } = useItems();
+  const { items, addReminder, updateReminder, toggleReminderEnabled, deleteItem, notificationEnabled, reload } = useItems();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => localDateInput());
   const [editor, setEditor] = useState<ThoughtItem | 'new' | null>(params.action === 'add' ? 'new' : null);
@@ -37,7 +39,7 @@ export default function CalendarScreen() {
   const remove = (item: ThoughtItem) => showDialog(confirmAction({ title: 'Delete reminder?', message: `“${item.title}” and its future notification will be removed.`, confirmLabel: 'Delete', onConfirm: () => deleteItem(item.id) }));
 
   return (
-    <AppScreen tabbed assistant={!editor}>
+    <AppScreen tabbed assistant={!editor} onRefresh={reload}>
       <ScreenHeader back />
       <PageHeader title="Calendar" supporting="Keep one-time and repeating reminders in one place." action={<Pressable accessibilityRole="button" onPress={() => setEditor('new')} style={styles.addButton}><Feather name="plus" size={18} color={colors.paper} /><Text style={styles.addButtonText}>Add</Text></Pressable>} />
 
@@ -83,9 +85,9 @@ function startOfMonth(date: Date) { return new Date(date.getFullYear(), date.get
 function addMonths(date: Date, amount: number) { return new Date(date.getFullYear(), date.getMonth() + amount, 1); }
 function calendarDays(month: Date) { const first = new Date(month.getFullYear(), month.getMonth(), 1); const start = new Date(first); start.setDate(first.getDate() - first.getDay()); return Array.from({ length: 42 }, (_, index) => { const date = new Date(start); date.setDate(start.getDate() + index); return date; }); }
 
-const styles = StyleSheet.create({
+const styles = themedStyles(() => ({
   addButton: { minHeight: 44, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 22, backgroundColor: colors.ink }, addButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper },
   calendar: { marginTop: 20, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper }, monthHeader: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, monthTitle: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.ink }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, weekRow: { flexDirection: 'row', marginTop: 8 }, weekday: { width: '14.285%', textAlign: 'center', fontFamily: fonts.bodySemiBold, fontSize: 10, color: colors.muted }, days: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 }, day: { width: '14.285%', height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 21 }, daySelected: { backgroundColor: colors.ink }, dayText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.ink }, dayOutside: { color: colors.muted }, dayTextSelected: { color: colors.paper }, dot: { position: 'absolute', bottom: 6, width: 4, height: 4, borderRadius: 2, backgroundColor: colors.accent }, dotSelected: { backgroundColor: colors.paper },
   form: { marginTop: 18, padding: 17, gap: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper }, formHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }, formTitle: { fontFamily: fonts.bodyBold, fontSize: 19, color: colors.ink }, formHelp: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, color: colors.secondary }, field: { gap: 7 }, fieldRow: { flexDirection: 'row', gap: 10 }, fieldGrow: { flex: 1 }, fieldNarrow: { width: 116 }, fieldLabel: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink }, input: { minHeight: 48, paddingHorizontal: 13, borderRadius: 9, borderWidth: 1, borderColor: colors.borderStrong, fontFamily: fonts.body, fontSize: 14, color: colors.ink }, multiline: { minHeight: 76, paddingTop: 12, textAlignVertical: 'top' }, repeatRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, repeatChoice: { minHeight: 40, paddingHorizontal: 13, alignItems: 'center', justifyContent: 'center', borderRadius: 20, borderWidth: 1, borderColor: colors.borderStrong }, repeatSelected: { borderColor: colors.ink, backgroundColor: colors.ink }, repeatText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary }, repeatTextSelected: { color: colors.paper }, notifyRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12 }, notifyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink }, notifyHelp: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary }, formActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 9 }, cancel: { minHeight: 46, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }, cancelText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.secondary }, save: { minHeight: 46, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.ink }, saveText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper }, disabled: { opacity: 0.5 },
   agendaHeader: { minHeight: 74, marginTop: 24, flexDirection: 'row', alignItems: 'center' }, agendaTitle: { fontFamily: fonts.bodySemiBold, fontSize: 17, color: colors.ink }, agendaDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 12, color: colors.secondary }, list: { borderTopWidth: 1, borderTopColor: colors.border }, row: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 9, borderBottomWidth: 1, borderBottomColor: colors.border }, bell: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentSoft }, bellPaused: { backgroundColor: colors.background }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 19, color: colors.ink }, rowMeta: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 15, color: colors.secondary }, rowAction: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' }, empty: { minHeight: 98, paddingRight: 52, flexDirection: 'row', alignItems: 'center', gap: 13, borderBottomWidth: 1, borderBottomColor: colors.border }, emptyIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.paper, borderWidth: 1, borderColor: colors.border }, emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink }, emptyText: { marginTop: 4, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
-});
+}));

@@ -1,19 +1,21 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { CategoryIcon, categoryMeta } from '@/components/CategoryIcon';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts } from '@/constants/theme';
+import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { Category } from '@/types';
+import { useTheme } from '@/store/ThemeContext';
 
 const categories: Category[] = ['task', 'reminder', 'idea', 'note'];
 
 export default function ResultsScreen() {
+  useTheme();
   const { showDialog } = useAppDialog();
   const router = useRouter();
   const { items, latestItemIds, toggleComplete, deleteItem, changeCategory, scheduleTomorrow } = useItems();
@@ -52,9 +54,9 @@ export default function ResultsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  title: { marginTop: 8, fontFamily: fonts.editorialSemiBold, fontSize: 38, color: colors.ink },
-  subtitle: { fontFamily: fonts.editorial, fontSize: 27, color: colors.secondary },
+const styles = themedStyles(() => ({
+  title: { marginTop: 8, fontFamily: fonts.bodyBold, fontSize: 38, color: colors.ink },
+  subtitle: { fontFamily: fonts.bodyMedium, fontSize: 27, color: colors.secondary },
   meta: { marginTop: 12, fontFamily: fonts.body, fontSize: 12, color: colors.muted },
   sections: { marginTop: 30, borderTopWidth: 1, borderTopColor: colors.border },
   section: { borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -71,4 +73,4 @@ const styles = StyleSheet.create({
   rowAction: { width: 30, height: 40, alignItems: 'center', justifyContent: 'center' },
   timelineButton: { height: 54, marginTop: 28, paddingHorizontal: 18, borderRadius: 12, backgroundColor: colors.dark, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   timelineText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.surface },
-});
+}));
