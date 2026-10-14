@@ -7,7 +7,7 @@ LifeDesk is an Android-first, local-first personal command center built with Exp
 - Conversational AI assistant with typed questions and voice transcription you can edit before sending
 - Pixel cat states, Pixelify Sans display type, and portfolio-inspired white/black/blue UI
 - Versioned SQLite storage with automatic migration of legacy local tasks and recordings
-- Today priorities, projects with handoff notes, activity-based XP, and optional rewards
+- Today priorities, projects with handoff notes, and a weekly review of what got done
 - Integer-centavo money ledger and decimal-safe BTC/VOO quantity calculations
 - Recorded investment cost kept separate from manually timestamped estimated value
 - Custom monthly salary, bill, and BTC/VOO schedules with duplicate-safe automatic posting

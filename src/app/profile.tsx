@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
 import { Linking, Platform, Pressable, Switch, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
+import { useAppLock } from '@/components/AppLockGate';
+import { isAppLockSupportedPlatform } from '@/services/appLock';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
 import { ScreenHeader } from '@/components/ScreenHeader';
@@ -25,7 +27,16 @@ export default function ProfileScreen() {
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const notificationRuntimeAvailable = isNotificationRuntimeAvailable();
-  const { items, dumps, projects, transactions, notificationEnabled, rewardsEnabled, level, totalXp, setNotificationEnabled, setRewardsEnabled, exportData, importData } = useItems();
+  const { items, dumps, projects, transactions, notificationEnabled, cardRemindersEnabled, weeklyReviewReminderEnabled, setNotificationEnabled, setCardRemindersEnabled, setWeeklyReviewReminderEnabled, exportData, importData } = useItems();
+  const { lockEnabled, setLockEnabled } = useAppLock();
+  const [lockSaving, setLockSaving] = useState(false);
+  const changeLock = async (enabled: boolean) => {
+    setLockSaving(true);
+    try {
+      const result = await setLockEnabled(enabled);
+      if (!result.ok && result.message) showDialog({ title: 'App lock is not on', message: result.message, tone: 'warning' });
+    } finally { setLockSaving(false); }
+  };
   const checkAi = async () => {
     setAiStatus('Checking protected connection…');
     const result = await checkOrganizerHealth();
@@ -119,7 +130,11 @@ export default function ProfileScreen() {
       {!getOrganizerApiUrl() ? <View style={styles.notice}><Feather name="alert-circle" size={17} color={colors.accent} /><Text selectable style={styles.noticeText}>The Assistant server is not configured for this build. Chat and voice requests are unavailable.</Text></View> : null}
 
       <Section title="Profile">
-        <Setting icon="user" label="Zhyronne Batican" detail={`Level ${String(level).padStart(2, '0')} · ${totalXp} XP`} />
+        <Setting icon="user" label="Zhyronne Batican" detail="Your personal workspace" />
+      </Section>
+
+      <Section title="Reflect">
+        <Action icon="sunrise" label="Weekly review" detail="What got done, where money went, and what is coming up" onPress={() => router.push('/weekly-review')} />
       </Section>
 
       <Section title="Preferences">
@@ -145,11 +160,13 @@ export default function ProfileScreen() {
           ))}
         </View>
         <Setting icon="bell" label="Notifications" detail={notificationSaving ? 'Updating reminder schedules…' : notificationRuntimeAvailable ? 'Due-date reminders on this device' : 'Available in the installed mobile app'}><Switch accessibilityLabel="Notifications" accessibilityHint="Schedules or cancels due-date reminders on this device" disabled={!notificationRuntimeAvailable || notificationSaving} value={notificationRuntimeAvailable && notificationEnabled} onValueChange={(enabled) => void changeNotifications(enabled)} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
-        <Setting icon="award" label="Momentum and XP" detail="Optional, never punitive"><Switch accessibilityLabel="Momentum and XP" value={rewardsEnabled} onValueChange={setRewardsEnabled} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
+        <Setting icon="credit-card" label="Card payment reminders" detail={!notificationRuntimeAvailable ? 'Available in the installed mobile app' : notificationEnabled ? '3 days before and on each credit card due date, at 9 AM' : 'Turn on Notifications above to get these'}><Switch accessibilityLabel="Card payment reminders" disabled={!notificationRuntimeAvailable || !notificationEnabled} value={notificationRuntimeAvailable && notificationEnabled && cardRemindersEnabled} onValueChange={setCardRemindersEnabled} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
+        <Setting icon="calendar" label="Weekly review reminder" detail={!notificationRuntimeAvailable ? 'Available in the installed mobile app' : notificationEnabled ? 'Sundays at 6 PM' : 'Turn on Notifications above to get this'}><Switch accessibilityLabel="Weekly review reminder" disabled={!notificationRuntimeAvailable || !notificationEnabled} value={notificationRuntimeAvailable && notificationEnabled && weeklyReviewReminderEnabled} onValueChange={setWeeklyReviewReminderEnabled} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
         {Platform.OS === 'android' ? <Action icon="layout" label="Android widget" detail="Choose whether the home-screen widget may show your balance" onPress={() => router.push('/home-customize')} /> : null}
       </Section>
 
       <Section title="Data and privacy">
+        <Setting icon="lock" label="App lock" detail={!isAppLockSupportedPlatform() ? 'Available in the phone app' : lockSaving ? 'Confirm it is you…' : lockEnabled ? 'Asks for your fingerprint, face, or PIN when you open LifeDesk' : 'Require your fingerprint, face, or PIN to open LifeDesk'}><Switch accessibilityLabel="App lock" accessibilityHint="Requires your phone's fingerprint, face, or PIN to open LifeDesk" disabled={!isAppLockSupportedPlatform() || lockSaving} value={lockEnabled} onValueChange={(enabled) => void changeLock(enabled)} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
         <Action icon="cpu" label="Check Assistant connection" detail={aiStatus} onPress={() => void checkAi()} />
         <Action icon="download" label="Export data archive" detail="JSON copy of every local record, for safekeeping" onPress={shareExport} />
         <Action icon="upload" label={restoring ? 'Restoring backup…' : 'Restore from backup'} detail={restoring ? 'Rebuilding your local records' : 'Replaces all local data with a LifeDesk export file'} onPress={() => { if (!restoring) void chooseBackup(); }} />

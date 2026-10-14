@@ -468,7 +468,6 @@ function activityEvent(value: unknown): ActivityEvent | null {
     id,
     kind,
     title,
-    xp: wholeNumber(value.xp) ?? 0,
     createdAt: isoDate(value.createdAt) ?? new Date().toISOString(),
     sourceId: text(value.sourceId) ?? undefined,
   };

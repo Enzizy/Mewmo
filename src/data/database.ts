@@ -393,7 +393,7 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     cards: cards.map(fromPaymentCardRow),
     homePreferences: normalizeHomePreferences(homePreferencesValue ? safeObject<Partial<HomePreferences>>(homePreferencesValue) : DEFAULT_HOME_PREFERENCES),
     walletSetup,
-    activity: activity.map((row) => ({ id: row.id, kind: row.kind as ActivityEvent['kind'], title: row.title, xp: row.xp, createdAt: row.created_at, sourceId: row.source_id ?? undefined })),
+    activity: activity.map((row) => ({ id: row.id, kind: row.kind as ActivityEvent['kind'], title: row.title, createdAt: row.created_at, sourceId: row.source_id ?? undefined })),
   };
 }
 
@@ -886,7 +886,7 @@ async function insertInvestmentTransaction(executor: SqlExecutor, investment: In
 }
 
 async function insertActivity(executor: SqlExecutor, activity: ActivityEvent) {
-  await executor.runAsync('INSERT OR IGNORE INTO activity_events (id, kind, title, xp, created_at, source_id) VALUES (?, ?, ?, ?, ?, ?)', activity.id, activity.kind, activity.title, activity.xp, activity.createdAt, activity.sourceId ?? null);
+  await executor.runAsync('INSERT OR IGNORE INTO activity_events (id, kind, title, xp, created_at, source_id) VALUES (?, ?, ?, 0, ?, ?)', activity.id, activity.kind, activity.title, activity.createdAt, activity.sourceId ?? null);
 }
 
 async function insertGoalSuggestionsForIncome(executor: SQLite.SQLiteDatabase, transactionId: string, incomeMinor: number) {
@@ -921,7 +921,7 @@ type ProjectRow = { id: string; name: string; summary: string | null; status: st
 type ProjectSessionRow = { id: string; project_id: string; note: string; next_action: string | null; created_at: string };
 type FinancialTransactionRow = { id: string; type: string; title: string; category: string; amount_minor: number; occurred_at: string; note: string | null; source_dump_id: string | null; linked_investment_id: string | null };
 type InvestmentTransactionRow = { id: string; asset: string; quantity: string; unit_price_minor: number; amount_minor: number; fees_minor: number; occurred_at: string; source_dump_id: string | null; cash_transaction_id: string | null };
-type ActivityEventRow = { id: string; kind: string; title: string; xp: number; created_at: string; source_id: string | null };
+type ActivityEventRow = { id: string; kind: string; title: string; created_at: string; source_id: string | null };
 type RecurringRuleRow = { id: string; kind: string; title: string; category: string; amount_minor: number; days_json: string; asset: string | null; quantity: string | null; active: number; starts_on: string; created_at: string; updated_at: string };
 type MonthlyBudgetRow = { id: string; category: string; limit_minor: number; active: number; created_at: string; updated_at: string };
 type SettingRow = { key: string; value: string };

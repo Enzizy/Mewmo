@@ -13,6 +13,7 @@ import { USER_DISPLAY_NAME } from '@/constants/brand';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { HOME_SHORTCUTS } from '@/features/home/home-preferences';
 import { ASSISTANT_STARTERS } from '@/features/assistant/starters';
+import { weeklyReviewDue } from '@/features/review/weekly-review';
 import { loadSavedWeather, WeatherSnapshot } from '@/services/weather';
 import { useItems } from '@/store/ItemsContext';
 import { HomeShortcutId, HomeWidgetId, ThoughtItem } from '@/types';
@@ -140,6 +141,11 @@ export default function HomeScreen() {
         <Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable>
       </View>}
     />
+    {hydrated && weeklyReviewDue(data) ? <Pressable accessibilityRole="button" accessibilityHint="Opens your weekly review" onPress={() => router.push('/weekly-review')} style={({ pressed }) => [styles.reviewBanner, pressed && styles.pressed]}>
+      <View style={styles.reviewBannerCat}><PixelCat pose="idle" size={34} still /></View>
+      <View style={styles.weatherMain}><Text style={styles.reviewBannerTitle}>Your week in review is ready</Text><Text style={styles.reviewBannerText}>See what got done, where money went, and what is next.</Text></View>
+      <Feather name="arrow-right" size={18} color={colors.paper} />
+    </Pressable> : null}
     {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : isDesktop ? <>
       <View style={styles.desktopHeroGrid}>
         {showsMoney ? <View style={styles.desktopMoneyColumn}>{widget('money')}</View> : null}
@@ -227,6 +233,10 @@ function formatReminderDate(date: Date) {
 
 const styles = themedStyles(() => ({
   headerActions: { flexDirection: 'row', gap: 8 },
+  reviewBanner: { minHeight: 70, marginTop: 18, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.lg, backgroundColor: colors.ink },
+  reviewBannerCat: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: colors.paper },
+  reviewBannerTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper },
+  reviewBannerText: { marginTop: 2, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.onInkMuted },
   profileButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   loading: { minHeight: 260, alignItems: 'center', justifyContent: 'center', gap: 12 },
   loadingText: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary },

@@ -87,7 +87,13 @@
           "granularPermissions": []
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow LifeDesk to use Face ID to unlock your private records."
+        }
+      ]
     ],
     "extra": {
       "router": {

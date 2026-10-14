@@ -262,7 +262,6 @@ export type ActivityEvent = {
   id: string;
   kind: ActivityKind;
   title: string;
-  xp: number;
   createdAt: string;
   sourceId?: string;
 };

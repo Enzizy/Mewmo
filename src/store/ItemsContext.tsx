@@ -46,7 +46,10 @@ import {
   NotificationPermissionError,
   requestNotificationPermission,
   scheduleItemNotification,
+  syncCardReminders,
+  syncWeeklyReviewReminder,
 } from '@/services/notifications';
+import { planCardReminders } from '@/features/wallet/card-reminders';
 import { fetchMarketQuotes } from '@/services/marketApi';
 import {
   ActivityEvent,
@@ -97,14 +100,12 @@ type ItemsContextValue = AppDataSnapshot & {
   processingError: string | null;
   marketRefreshError: string | null;
   notificationEnabled: boolean;
-  rewardsEnabled: boolean;
-  totalXp: number;
-  level: number;
   setPendingRecording: (recording: PendingRecording | null) => void;
   setPendingOrganizedDump: (dump: OrganizedDump | null) => void;
   setProcessingError: (message: string | null) => void;
   setNotificationEnabled: (enabled: boolean) => Promise<void>;
-  setRewardsEnabled: (enabled: boolean) => void;
+  cardRemindersEnabled: boolean;
+  setCardRemindersEnabled: (enabled: boolean) => void;
   confirmOrganizedDump: (organized: OrganizedDump) => Promise<void>;
   queueReviewProposal: (source: ReviewProposalSource, organized: OrganizedDump, recording?: PendingRecording) => Promise<ReviewProposal>;
   confirmReviewProposal: (id: string, organized: OrganizedDump) => Promise<void>;
@@ -144,6 +145,10 @@ type ItemsContextValue = AppDataSnapshot & {
   deleteGoal: (id: string) => Promise<void>;
   resolveGoalSuggestion: (id: string, status: 'confirmed' | 'skipped') => Promise<void>;
   updateHomePreferences: (preferences: HomePreferences) => Promise<void>;
+  /** Marks this week as reviewed. A reflection, if written, is kept as a searchable note. */
+  completeWeeklyReview: (input: { weekLabel: string; reflection?: string }) => Promise<void>;
+  weeklyReviewReminderEnabled: boolean;
+  setWeeklyReviewReminderEnabled: (enabled: boolean) => void;
   saveCard: (input: PaymentCardInput, id?: string) => Promise<PaymentCard>;
   updateCardBalance: (id: string, balanceMinor: number) => Promise<void>;
   deleteCard: (id: string) => Promise<void>;
@@ -157,9 +162,9 @@ export type ImportSummary = { restored: number; description: string; skipped: nu
 
 const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], cards: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, widgetBalancesVisible: false, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
 const NOTIFICATIONS_KEY = 'lifedesk.notifications';
-const REWARDS_KEY = 'lifedesk.rewards';
+const CARD_REMINDERS_KEY = 'lifedesk.cardReminders';
+const WEEKLY_REVIEW_REMINDER_KEY = 'lifedesk.weeklyReviewReminder';
 const LEGACY_NOTIFICATIONS_KEY = 'mewmo.notifications';
-const LEGACY_REWARDS_KEY = 'mewmo.rewards';
 const ItemsContext = createContext<ItemsContextValue | null>(null);
 
 function readMigratedPreference(key: string, legacyKey: string, defaultValue: boolean) {
@@ -182,7 +187,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [marketRefreshError, setMarketRefreshError] = useState<string | null>(null);
   const [notificationEnabled, setNotificationEnabledState] = useState(() => readMigratedPreference(NOTIFICATIONS_KEY, LEGACY_NOTIFICATIONS_KEY, false));
-  const [rewardsEnabled, setRewardsEnabledState] = useState(() => readMigratedPreference(REWARDS_KEY, LEGACY_REWARDS_KEY, true));
+  const [cardRemindersEnabled, setCardRemindersEnabledState] = useState(() => localStorage.getItem(CARD_REMINDERS_KEY) !== 'false');
+  const [weeklyReviewReminderEnabled, setWeeklyReviewReminderEnabledState] = useState(() => localStorage.getItem(WEEKLY_REVIEW_REMINDER_KEY) !== 'false');
 
   // Read through refs so the delete/update callbacks stay stable across renders
   // and never have to reach into a state updater for the current record.
@@ -277,10 +283,22 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     }
   }, [data.items, scheduleNotificationForItem]);
 
-  const setRewardsEnabled = useCallback((enabled: boolean) => {
-    setRewardsEnabledState(enabled);
-    localStorage.setItem(REWARDS_KEY, String(enabled));
+
+  const setCardRemindersEnabled = useCallback((enabled: boolean) => {
+    setCardRemindersEnabledState(enabled);
+    localStorage.setItem(CARD_REMINDERS_KEY, String(enabled));
   }, []);
+
+  // Card payment reminders are derived from the cards themselves, so they are
+  // rebuilt whenever a balance, due day, or the privacy setting changes, and
+  // after each foreground refresh, which also rolls them on to the next month.
+  useEffect(() => {
+    if (!hydrated) return;
+    const plan = notificationEnabled && cardRemindersEnabled
+      ? planCardReminders(data.cards, new Date(), { showAmounts: data.homePreferences.balancesVisible })
+      : [];
+    syncCardReminders(plan).catch(() => undefined);
+  }, [cardRemindersEnabled, data.cards, data.homePreferences.balancesVisible, hydrated, notificationEnabled]);
 
   const persistOrganizedProposal = useCallback(async (organized: OrganizedDump, recording: PendingRecording | undefined, source: ReviewProposalSource, proposalId?: string) => {
     const createdAt = new Date().toISOString();
@@ -327,14 +345,14 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     }
 
     const dump: VoiceDump | undefined = recording ? { id: dumpId, title: organized.title, createdAt, durationSeconds: recording.durationSeconds, uri: recording.uri, transcript: organized.transcript } : undefined;
-    const activityEvent: ActivityEvent = { id: createId('activity'), kind: recording ? 'dump_confirmed' : 'proposal_confirmed', title: `Sorted “${organized.title}”`, xp: rewardsEnabled ? 10 : 0, createdAt, sourceId: dumpId };
+    const activityEvent: ActivityEvent = { id: createId('activity'), kind: recording ? 'dump_confirmed' : 'proposal_confirmed', title: `Sorted “${organized.title}”`, createdAt, sourceId: dumpId };
     await saveConfirmedBundle({ dump, items, projects, transactions, investments, activity: activityEvent, reviewProposalId: proposalId });
     await refresh();
     setLatestItemIds(items.map((item) => item.id));
     setPendingRecording(null);
     setPendingOrganizedDump(null);
     setProcessingError(null);
-  }, [notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
+  }, [notificationEnabled, refresh, scheduleNotificationForItem]);
 
   const confirmOrganizedDump = useCallback(async (organized: OrganizedDump) => {
     if (!pendingRecording) throw new Error('The original recording is no longer available.');
@@ -366,20 +384,21 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   }, [data.reviewProposals, pendingRecording?.uri, refresh]);
 
   // Persistence stays outside the state updater: React may run an updater more
-  // than once, and a repeated write or XP award would be a real record change.
-  const updateItem = useCallback((id: string, transform: (item: ThoughtItem) => ThoughtItem, reward?: boolean) => {
+  // than once, and a repeated write would be a real record change.
+  const updateItem = useCallback((id: string, transform: (item: ThoughtItem) => ThoughtItem, logCompletion?: boolean) => {
     const item = itemsRef.current.find((candidate) => candidate.id === id);
     if (!item) return;
     const next = transform(item);
     setData((current) => ({ ...current, items: current.items.map((candidate) => candidate.id === id ? next : candidate) }));
     updateThoughtItem(next).catch(() => refresh());
-    if (reward && rewardsEnabled && !item.completed && next.completed) {
-      const activity: ActivityEvent = { id: createId('activity'), kind: 'item_completed', title: `Completed “${next.title}”`, xp: 5, createdAt: new Date().toISOString(), sourceId: next.id };
+    // Completions are logged so the weekly review can count what you finished.
+    if (logCompletion && !item.completed && next.completed) {
+      const activity: ActivityEvent = { id: createId('activity'), kind: 'item_completed', title: `Completed “${next.title}”`, createdAt: new Date().toISOString(), sourceId: next.id };
       saveActivity(activity).then(refresh).catch(() => undefined);
     }
-  }, [refresh, rewardsEnabled]);
+  }, [refresh]);
 
-  const updateNotificationAwareItem = useCallback(async (id: string, transform: (item: ThoughtItem) => ThoughtItem, reward?: boolean) => {
+  const updateNotificationAwareItem = useCallback(async (id: string, transform: (item: ThoughtItem) => ThoughtItem, logCompletion?: boolean) => {
     // Read the latest items, not this callback's render: an Undo captured
     // before the first toggle landed must see the item as it is now.
     const item = itemsRef.current.find((candidate) => candidate.id === id);
@@ -390,8 +409,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     try {
       if (notificationEnabled && shouldScheduleNotification(next)) next.notificationId = await scheduleNotificationForItem(next);
       await updateThoughtItem(next);
-      if (reward && rewardsEnabled && !item.completed && next.completed) {
-        await saveActivity({ id: createId('activity'), kind: 'item_completed', title: `Completed “${next.title}”`, xp: 5, createdAt: new Date().toISOString(), sourceId: next.id });
+      if (logCompletion && !item.completed && next.completed) {
+        await saveActivity({ id: createId('activity'), kind: 'item_completed', title: `Completed “${next.title}”`, createdAt: new Date().toISOString(), sourceId: next.id });
       }
       await refresh();
     } catch (error) {
@@ -403,7 +422,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
       await refresh();
       throw error;
     }
-  }, [notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
+  }, [notificationEnabled, refresh, scheduleNotificationForItem]);
 
   const deleteItem = useCallback((id: string) => {
     const item = itemsRef.current.find((candidate) => candidate.id === id);
@@ -509,10 +528,10 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   const addProjectHandoff = useCallback(async (projectId: string, note: string, nextAction?: string) => {
     const createdAt = new Date().toISOString();
     const session: ProjectSession = { id: createId('session'), projectId, note: note.trim(), nextAction: nextAction?.trim(), createdAt };
-    const activityEvent: ActivityEvent = { id: createId('activity'), kind: 'project_handoff', title: 'Saved a project handoff', xp: rewardsEnabled ? 8 : 0, createdAt, sourceId: session.id };
+    const activityEvent: ActivityEvent = { id: createId('activity'), kind: 'project_handoff', title: 'Saved a project handoff', createdAt, sourceId: session.id };
     await saveProjectSession(session, activityEvent);
     await refresh();
-  }, [refresh, rewardsEnabled]);
+  }, [refresh]);
 
   const addTransaction = useCallback(async (input: Pick<FinancialTransaction, 'type' | 'title' | 'category' | 'amountMinor'> & { occurredAt?: string; note?: string }) => {
     if (!Number.isSafeInteger(input.amountMinor) || input.amountMinor <= 0) throw new Error('Enter a valid amount greater than zero.');
@@ -709,6 +728,26 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     await refresh();
   }, [refresh]);
 
+  const completeWeeklyReview = useCallback(async ({ weekLabel, reflection }: { weekLabel: string; reflection?: string }) => {
+    const createdAt = new Date().toISOString();
+    const note = reflection?.trim();
+    if (note) {
+      await updateThoughtItem({ id: createId('review-note'), category: 'note', title: `Weekly review · ${weekLabel}`, detail: note, dueAt: null, createdAt, dateLabel: dateLabelFor(createdAt), time: timeLabelFor(createdAt) });
+    }
+    await saveActivity({ id: createId('activity'), kind: 'weekly_review', title: `Reviewed the week of ${weekLabel}`, createdAt });
+    await refresh();
+  }, [refresh]);
+
+  const setWeeklyReviewReminderEnabled = useCallback((enabled: boolean) => {
+    setWeeklyReviewReminderEnabledState(enabled);
+    localStorage.setItem(WEEKLY_REVIEW_REMINDER_KEY, String(enabled));
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    syncWeeklyReviewReminder(notificationEnabled && weeklyReviewReminderEnabled).catch(() => undefined);
+  }, [hydrated, notificationEnabled, weeklyReviewReminderEnabled]);
+
   const updateHomePreferences = useCallback(async (preferences: HomePreferences) => {
     const normalized = normalizeHomePreferences(preferences);
     await saveHomePreferences(normalized);
@@ -758,12 +797,11 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     await refresh();
   }, [refresh]);
 
-  const totalXp = useMemo(() => data.activity.reduce((sum, event) => sum + event.xp, 0), [data.activity]);
-  const level = Math.floor(totalXp / 50) + 1;
 
   const value = useMemo<ItemsContextValue>(() => ({
-    ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, marketRefreshError, notificationEnabled, rewardsEnabled, totalXp, level,
-    setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, setRewardsEnabled, confirmOrganizedDump, queueReviewProposal, confirmReviewProposal, discardReviewProposal,
+    ...data, hydrated, pendingRecording, pendingOrganizedDump, latestItemIds, processingError, marketRefreshError, notificationEnabled,
+    cardRemindersEnabled, setCardRemindersEnabled, weeklyReviewReminderEnabled, setWeeklyReviewReminderEnabled, completeWeeklyReview,
+    setPendingRecording, setPendingOrganizedDump, setProcessingError, setNotificationEnabled, confirmOrganizedDump, queueReviewProposal, confirmReviewProposal, discardReviewProposal,
     toggleComplete: (id) => updateNotificationAwareItem(id, (item) => ({ ...item, completed: !item.completed }), true),
     toggleFavorite: (id) => updateItem(id, (item) => ({ ...item, favorite: !item.favorite })),
     deleteItem, deleteDump,
@@ -775,7 +813,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     addProject, addProjectHandoff, addTransaction, updateTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
     addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, confirmOccurrence, matchOccurrence, skipOccurrence, postponeOccurrence,
     saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, saveCard, updateCardBalance, deleteCard, setWalletSetup, exportData: exportAppData, importData, reload,
-  }), [saveCard, updateCardBalance, deleteCard, addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTask, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, importData, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, reload, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder, updateTransaction]);
+  }), [cardRemindersEnabled, setCardRemindersEnabled, weeklyReviewReminderEnabled, setWeeklyReviewReminderEnabled, completeWeeklyReview, saveCard, updateCardBalance, deleteCard, addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTask, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, importData, latestItemIds, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, reload, resolveGoalSuggestion, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder, updateTransaction]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

@@ -18,6 +18,7 @@ import { ItemsProvider, useItems } from '@/store/ItemsContext';
 import { ThemeProvider, useTheme } from '@/store/ThemeContext';
 import { AppDialogProvider } from '@/components/AppDialog';
 import { AppToastProvider } from '@/components/AppToast';
+import { AppLockGate } from '@/components/AppLockGate';
 import { LifeDeskNativeSync } from '@/components/LifeDeskNativeSync';
 import { colors } from '@/constants/theme';
 import { configureNotifications, scheduleSnoozeNotification, subscribeToNotificationResponses } from '@/services/notifications';
@@ -50,6 +51,7 @@ function ThemedRoot() {
           <NotificationBridge />
           <AppDialogProvider>
             <AppToastProvider>
+              <AppLockGate>
               <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
               <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
                 <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
@@ -57,9 +59,11 @@ function ThemedRoot() {
                 <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
                 <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
                 <Stack.Screen name="home-customize" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="weekly-review" options={{ animation: 'fade_from_bottom' }} />
                 <Stack.Screen name="results" options={{ animation: 'fade' }} />
                 <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
               </Stack>
+              </AppLockGate>
             </AppToastProvider>
           </AppDialogProvider>
         </ItemsProvider>
@@ -79,7 +83,16 @@ function NotificationBridge() {
   useEffect(() => {
     let unsubscribe: () => void = () => undefined;
     let mounted = true;
-    subscribeToNotificationResponses((itemId, action) => {
+    subscribeToNotificationResponses((target, action) => {
+      if ('route' in target) {
+        router.push('/weekly-review');
+        return;
+      }
+      if ('cardId' in target) {
+        router.push({ pathname: '/wallet/card/[id]', params: { id: target.cardId } });
+        return;
+      }
+      const { itemId } = target;
       const item = itemsRef.current.find((candidate) => candidate.id === itemId);
       if (action === 'complete' && item && !item.completed) {
         void toggleCompleteRef.current(itemId).catch(() => undefined);

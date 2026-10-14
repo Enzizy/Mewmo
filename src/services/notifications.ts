@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import { CARD_REMINDER_PREFIX, CardReminder } from '@/features/wallet/card-reminders';
 import { ThoughtItem } from '@/types';
 
 const channelId = 'gather-reminders';
@@ -61,22 +62,27 @@ export async function requestNotificationPermission() {
   return (await notifications.requestPermissionsAsync()).granted;
 }
 
-export async function subscribeToNotificationResponses(onResponse: (itemId: string, action: LifeDeskNotificationAction) => void) {
+export type NotificationTarget = { itemId: string } | { cardId: string } | { route: 'weekly-review' };
+
+export async function subscribeToNotificationResponses(onResponse: (target: NotificationTarget, action: LifeDeskNotificationAction) => void) {
   const notifications = await getNotifications();
   if (!notifications) return () => undefined;
 
   const handled = new Set<string>();
   const handle = (response: Awaited<ReturnType<NotificationsModule['getLastNotificationResponseAsync']>>) => {
     if (!response) return;
-    const itemId = response.notification.request.content.data?.itemId;
-    if (typeof itemId !== 'string') return;
+    const data = response.notification.request.content.data;
+    const target: NotificationTarget | null = typeof data?.itemId === 'string' ? { itemId: data.itemId }
+      : typeof data?.cardId === 'string' ? { cardId: data.cardId }
+        : data?.route === 'weekly-review' ? { route: 'weekly-review' } : null;
+    if (!target) return;
     const key = `${response.notification.request.identifier}:${response.actionIdentifier}`;
     if (handled.has(key)) return;
     handled.add(key);
     const action: LifeDeskNotificationAction = response.actionIdentifier === COMPLETE_NOTIFICATION_ACTION
       ? 'complete'
       : response.actionIdentifier === SNOOZE_NOTIFICATION_ACTION ? 'snooze' : 'open';
-    onResponse(itemId, action);
+    onResponse(target, action);
     void notifications.clearLastNotificationResponseAsync();
   };
 
@@ -152,6 +158,43 @@ function recurrenceTrigger(notifications: NotificationsModule, recurrence: NonNu
   if (recurrence.frequency === 'weekly') return { type: notifications.SchedulableTriggerInputTypes.WEEKLY, ...shared, weekday: recurrence.weekday ?? 1 };
   if (recurrence.frequency === 'monthly') return { type: notifications.SchedulableTriggerInputTypes.MONTHLY, ...shared, day: recurrence.day ?? 1 };
   return { type: notifications.SchedulableTriggerInputTypes.YEARLY, ...shared, month: recurrence.month ?? 0, day: recurrence.day ?? 1 };
+}
+
+/**
+ * Replaces every scheduled card payment reminder with the given plan. Reminders
+ * use fixed identifiers, so this is safe to run each time cards change.
+ * Never prompts for permission: it only runs once notifications are allowed.
+ */
+export async function syncCardReminders(plan: CardReminder[]) {
+  const notifications = await getNotifications();
+  if (!notifications || !(await notifications.getPermissionsAsync()).granted) return;
+  const scheduled = await notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(scheduled
+    .filter((request) => request.identifier.startsWith(CARD_REMINDER_PREFIX))
+    .map((request) => notifications.cancelScheduledNotificationAsync(request.identifier).catch(() => undefined)));
+  for (const reminder of plan) {
+    await notifications.scheduleNotificationAsync({
+      identifier: reminder.identifier,
+      content: { title: reminder.title, body: reminder.body, data: { cardId: reminder.cardId }, sound: true },
+      trigger: { type: notifications.SchedulableTriggerInputTypes.DATE, date: reminder.date, channelId },
+    });
+  }
+}
+
+const WEEKLY_REVIEW_IDENTIFIER = 'lifedesk-weekly-review';
+
+/** Sunday at 6 PM, every week, while enabled. A fixed identifier keeps it to one schedule. */
+export async function syncWeeklyReviewReminder(enabled: boolean) {
+  const notifications = await getNotifications();
+  if (!notifications || !(await notifications.getPermissionsAsync()).granted) return;
+  await notifications.cancelScheduledNotificationAsync(WEEKLY_REVIEW_IDENTIFIER).catch(() => undefined);
+  if (!enabled) return;
+  await notifications.scheduleNotificationAsync({
+    identifier: WEEKLY_REVIEW_IDENTIFIER,
+    content: { title: 'Your week in review is ready', body: 'Five calm minutes: what got done, where money went, and what is coming up.', data: { route: 'weekly-review' }, sound: true },
+    // Expo numbers weekdays from 1 = Sunday.
+    trigger: { type: notifications.SchedulableTriggerInputTypes.WEEKLY, weekday: 1, hour: 18, minute: 0, channelId },
+  });
 }
 
 export async function cancelItemNotification(identifier?: string) {
