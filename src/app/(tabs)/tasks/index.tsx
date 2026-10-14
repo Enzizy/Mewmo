@@ -3,26 +3,35 @@ import { Href, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
+import { useAppToast } from '@/components/AppToast';
 import { AppListScreen } from '@/components/AppScreen';
 import { ItemRow } from '@/components/ItemRow';
 import { PageHeader } from '@/components/page-header';
 import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { filterTaskItems } from '@/utils/task-filters';
+import { QuickDue, quickDueDate } from '@/utils/date';
 import { Project, ThoughtItem } from '@/types';
 import { useTheme } from '@/store/ThemeContext';
 
 type ViewMode = 'focus' | 'upcoming' | 'projects' | 'inbox';
+const dueChoices: { value: QuickDue | null; label: string }[] = [
+  { value: null, label: 'No date' },
+  { value: 'today', label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'next-week', label: 'Next week' },
+];
 const modes: { value: ViewMode; label: string }[] = [
   { value: 'focus', label: 'Focus' },
   { value: 'upcoming', label: 'Upcoming' },
   { value: 'projects', label: 'Projects' },
-  { value: 'inbox', label: 'Inbox' },
+  { value: 'inbox', label: 'Captured' },
 ];
 
 export default function TasksScreen() {
   useTheme();
   const { showDialog } = useAppDialog();
+  const { showToast } = useAppToast();
   const router = useRouter();
   const params = useLocalSearchParams<{ action?: string }>();
   const { items, projects, addProject, addTask, reload } = useItems();
@@ -34,9 +43,11 @@ export default function TasksScreen() {
   const [addingTask, setAddingTask] = useState(params.action === 'add');
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDetail, setTaskDetail] = useState('');
+  const [taskDue, setTaskDue] = useState<QuickDue | null>(null);
   const [savingTask, setSavingTask] = useState(false);
   const filtered = useMemo(() => mode === 'projects' ? [] : filterTaskItems(items, mode), [items, mode]);
   const activeProjects = projects.filter((project) => project.status === 'active');
+  const counts = useMemo<Record<ViewMode, number>>(() => ({ focus: filterTaskItems(items, 'focus').length, upcoming: filterTaskItems(items, 'upcoming').length, inbox: filterTaskItems(items, 'inbox').length, projects: activeProjects.length }), [activeProjects.length, items]);
 
   useEffect(() => { if (params.action === 'add') setAddingTask(true); }, [params.action]);
 
@@ -57,8 +68,11 @@ export default function TasksScreen() {
     if (!taskTitle.trim()) return showDialog({ title: 'Add a task title', message: 'Describe the next action you want to remember.', tone: 'warning' });
     setSavingTask(true);
     try {
-      await addTask({ title: taskTitle, detail: taskDetail });
-      setTaskTitle(''); setTaskDetail(''); setAddingTask(false); setMode('inbox');
+      await addTask({ title: taskTitle, detail: taskDetail, dueAt: taskDue ? quickDueDate(taskDue).toISOString() : null });
+      // Show the list the new task actually lands in.
+      const destination: ViewMode = taskDue === 'tomorrow' || taskDue === 'next-week' ? 'upcoming' : 'focus';
+      setTaskTitle(''); setTaskDetail(''); setTaskDue(null); setAddingTask(false); setMode(destination);
+      showToast({ message: destination === 'upcoming' ? 'Task added to Upcoming' : 'Task added', icon: 'check' });
     } catch (error) {
       showDialog({ title: 'Could not create task', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
     } finally { setSavingTask(false); }
@@ -70,10 +84,15 @@ export default function TasksScreen() {
 
   const header = (
     <>
-      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Add a task" onPress={() => setAddingTask((value) => !value)} style={styles.iconButton}><Feather name={addingTask ? 'x' : 'plus'} size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={styles.iconButton}><Feather name="calendar" size={20} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Search tasks and captured items" onPress={() => router.push('/tasks/search')} style={styles.iconButton}><Feather name="search" size={20} color={colors.ink} /></Pressable></View>} />
-      <View accessibilityRole="tablist" style={styles.tabs}>{modes.map((item) => <Pressable accessibilityRole="tab" accessibilityLabel={`${item.label} tasks`} accessibilityState={{ selected: mode === item.value }} key={item.value} onPress={() => setMode(item.value)} style={({ pressed }) => [styles.tab, mode === item.value && styles.tabActive, pressed && styles.tabPressed]}><Text numberOfLines={1} style={[styles.tabText, mode === item.value && styles.tabTextActive]}>{item.label}</Text></Pressable>)}</View>
+      <PageHeader title="Tasks" supporting="Keep the next useful action visible." action={<Pressable accessibilityRole="button" accessibilityLabel="Add a task" onPress={() => setAddingTask((value) => !value)} style={styles.addButton}><Feather name={addingTask ? 'x' : 'plus'} size={17} color={colors.paper} /><Text style={styles.addButtonText}>{addingTask ? 'Close' : 'Add task'}</Text></Pressable>} />
+      <View style={styles.taskTools}>
+        <TaskTool icon="calendar" label="Calendar" onPress={() => router.push('/tasks/calendar' as Href)} />
+        <TaskTool icon="clock" label="Timeline" onPress={() => router.push('/tasks/timeline' as Href)} />
+        <TaskTool icon="search" label="Search" onPress={() => router.push('/tasks/search')} />
+      </View>
+      <View accessibilityRole="tablist" style={styles.tabs}>{modes.map((item) => <Pressable accessibilityRole="tab" accessibilityLabel={`${item.label} tasks`} accessibilityState={{ selected: mode === item.value }} key={item.value} onPress={() => setMode(item.value)} style={({ pressed }) => [styles.tab, mode === item.value && styles.tabActive, pressed && styles.tabPressed]}><Text numberOfLines={1} style={[styles.tabText, mode === item.value && styles.tabTextActive]}>{item.label}</Text>{counts[item.value] ? <Text style={[styles.tabCount, mode === item.value && styles.tabCountActive]}>{counts[item.value]}</Text> : null}</Pressable>)}</View>
 
-      {addingTask ? <View style={styles.projectForm}><View><Text style={styles.fieldLabel}>Task</Text><TextInput autoFocus value={taskTitle} onChangeText={setTaskTitle} placeholder="What needs to be done?" placeholderTextColor={colors.muted} returnKeyType="next" style={styles.input} /></View><View><Text style={styles.fieldLabel}>Notes (optional)</Text><TextInput value={taskDetail} onChangeText={setTaskDetail} placeholder="Helpful context" placeholderTextColor={colors.muted} style={styles.input} /></View><Pressable accessibilityRole="button" disabled={savingTask} onPress={createTask} style={[styles.createButton, savingTask && styles.disabled]}><Text style={styles.createButtonText}>{savingTask ? 'Adding…' : 'Add task'}</Text><Feather name="check" size={18} color={colors.paper} /></Pressable></View> : null}
+      {addingTask ? <View style={styles.projectForm}><View><Text style={styles.fieldLabel}>Task</Text><TextInput autoFocus value={taskTitle} onChangeText={setTaskTitle} onSubmitEditing={createTask} placeholder="What needs to be done?" placeholderTextColor={colors.muted} returnKeyType="done" style={styles.input} /></View><View><Text style={styles.fieldLabel}>Notes (optional)</Text><TextInput value={taskDetail} onChangeText={setTaskDetail} placeholder="Helpful context" placeholderTextColor={colors.muted} style={styles.input} /></View><View><Text style={styles.fieldLabel}>Due</Text><View accessibilityRole="radiogroup" style={styles.dueRow}>{dueChoices.map((choice) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: taskDue === choice.value }} key={choice.label} onPress={() => setTaskDue(choice.value)} style={[styles.dueChoice, taskDue === choice.value && styles.dueChoiceActive]}><Text style={[styles.dueText, taskDue === choice.value && styles.dueTextActive]}>{choice.label}</Text></Pressable>)}</View></View><Pressable accessibilityRole="button" disabled={savingTask} onPress={createTask} style={[styles.createButton, savingTask && styles.disabled]}><Text style={styles.createButtonText}>{savingTask ? 'Adding…' : 'Add task'}</Text><Feather name="check" size={18} color={colors.paper} /></Pressable></View> : null}
       <View style={styles.contextRow}><Text style={styles.contextTitle}>{modeTitle(mode)}</Text><View style={styles.contextActions}>{mode === 'projects' ? <Pressable accessibilityRole="button" onPress={() => setAddingProject((value) => !value)} style={styles.newProject}><Feather name={addingProject ? 'x' : 'plus'} size={16} color={colors.ink} /><Text style={styles.newProjectText}>{addingProject ? 'Close' : 'New project'}</Text></Pressable> : null}<Text style={styles.count}>{mode === 'projects' ? activeProjects.length : filtered.length}</Text></View></View>
       {mode === 'projects' && addingProject ? <View style={styles.projectForm}><View><Text style={styles.fieldLabel}>Project name</Text><TextInput value={projectName} onChangeText={setProjectName} placeholder="Portfolio refresh" placeholderTextColor={colors.muted} style={styles.input} /></View><View><Text style={styles.fieldLabel}>First next action</Text><TextInput value={nextAction} onChangeText={setNextAction} placeholder="Choose the first useful step" placeholderTextColor={colors.muted} style={styles.input} /></View><Pressable accessibilityRole="button" disabled={savingProject} onPress={createProject} style={[styles.createButton, savingProject && styles.disabled]}><Text style={styles.createButtonText}>{savingProject ? 'Creating…' : 'Create project'}</Text><Feather name="arrow-right" size={18} color={colors.paper} /></Pressable></View> : null}
       <View style={styles.listTop} />
@@ -81,8 +100,12 @@ export default function TasksScreen() {
   );
 
   const empty = mode === 'projects'
-    ? <EmptyState title="No active projects" detail="Create one here, or mention a project in your next voice capture." actionLabel="New project" onAction={() => setAddingProject(true)} />
-    : <EmptyState title={mode === 'focus' ? 'Nothing needs attention' : mode === 'upcoming' ? 'Nothing scheduled next' : 'Your inbox is clear'} detail={mode === 'focus' ? 'Due and overdue tasks will collect here.' : mode === 'upcoming' ? 'Future tasks and reminders will appear here.' : 'Notes, ideas, and undated items will appear here.'} actionLabel="Add a task" onAction={() => setAddingTask(true)} />;
+    ? <EmptyState title="No active projects" detail="Create a project here, or ask the Assistant to start one." actionLabel="New project" onAction={() => setAddingProject(true)} />
+    : mode === 'focus'
+      ? <EmptyState title="Nothing needs attention" detail="New, due, and overdue tasks will appear here." actionLabel="Add a task" onAction={() => setAddingTask(true)} />
+      : mode === 'upcoming'
+        ? <EmptyState title="Nothing scheduled next" detail="Future tasks and reminders will appear here." actionLabel="Open calendar" onAction={() => router.push('/tasks/calendar' as Href)} />
+        : <EmptyState title="Nothing captured yet" detail="Notes and ideas you save with the Assistant will appear here." actionLabel="Open Assistant" onAction={() => router.push('/chat' as Href)} />;
 
   return (
     <AppListScreen
@@ -102,14 +125,26 @@ export default function TasksScreen() {
 
 type ListRow = { kind: 'project'; project: Project } | { kind: 'item'; item: ThoughtItem };
 
-function modeTitle(mode: ViewMode) { return mode === 'focus' ? 'Needs attention' : mode === 'upcoming' ? 'Coming up' : mode === 'projects' ? 'Active projects' : 'Captured inbox'; }
+function modeTitle(mode: ViewMode) { return mode === 'focus' ? 'Needs attention' : mode === 'upcoming' ? 'Coming up' : mode === 'projects' ? 'Active projects' : 'Captured notes and ideas'; }
+function TaskTool({ icon, label, onPress }: { icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void }) { return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.taskTool, pressed && styles.taskToolPressed]}><Feather name={icon} size={16} color={colors.secondary} /><Text style={styles.taskToolText}>{label}</Text></Pressable>; }
 function EmptyState({ title, detail, actionLabel, onAction }: { title: string; detail: string; actionLabel?: string; onAction?: () => void }) { return <View style={styles.empty}><View style={styles.emptyIcon}><Feather name="inbox" size={21} color={colors.muted} /></View><View style={styles.emptyMain}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text>{actionLabel && onAction ? <Pressable accessibilityRole="button" accessibilityLabel={actionLabel} onPress={onAction} style={({ pressed }) => [styles.emptyAction, pressed && styles.emptyActionPressed]}><Feather name="plus" size={15} color={colors.ink} /><Text style={styles.emptyActionText}>{actionLabel}</Text></Pressable> : null}</View></View>; }
 
 const styles = themedStyles(() => ({
-  headerActions: { flexDirection: 'row', gap: 6 },
-  iconButton: { width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
-  tabs: { marginTop: 24, padding: 4, flexDirection: 'row', borderRadius: 12, backgroundColor: colors.border },
-  tab: { flex: 1, minWidth: 0, minHeight: 40, paddingHorizontal: 4, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  addButton: { minHeight: 44, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 22, backgroundColor: colors.ink },
+  addButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper },
+  taskTools: { marginTop: 20, flexDirection: 'row', gap: 8 },
+  taskTool: { minHeight: 44, flex: 1, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 11, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  taskToolPressed: { opacity: 0.68 },
+  taskToolText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.secondary },
+  tabs: { marginTop: 12, padding: 4, flexDirection: 'row', borderRadius: 12, backgroundColor: colors.border },
+  tab: { flex: 1, minWidth: 0, minHeight: 40, paddingHorizontal: 4, flexDirection: 'row', gap: 5, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  tabCount: { fontFamily: fonts.bodySemiBold, fontSize: 10, fontVariant: ['tabular-nums'], color: colors.muted },
+  tabCountActive: { color: colors.accent },
+  dueRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  dueChoice: { minHeight: 38, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: colors.borderStrong },
+  dueChoiceActive: { borderColor: colors.ink, backgroundColor: colors.ink },
+  dueText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary },
+  dueTextActive: { color: colors.paper },
   tabActive: { backgroundColor: colors.paper },
   tabPressed: { opacity: 0.72 },
   tabText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.secondary },

@@ -17,9 +17,10 @@ const sequences: Record<Exclude<CatPose, 'celebrate'>, { row: number; frames: nu
   sleep: { row: 4, frames: [0, 1, 2, 3, 2, 1], duration: 820 },
 };
 
-export function PixelCat({ pose = 'idle', size = 96, speech }: { pose?: CatPose; size?: number; speech?: string }) {
+/** `still` holds the first frame, for small repeated uses such as chat avatars. */
+export function PixelCat({ pose = 'idle', size = 96, speech, still = false }: { pose?: CatPose; size?: number; speech?: string; still?: boolean }) {
   useTheme();
-  const reduceMotion = useReducedMotion();
+  const reduceMotion = useReducedMotion() || still;
   const sequence = pose === 'celebrate' ? null : sequences[pose];
   const [tick, setTick] = useState(0);
   const frame = sequence?.frames[tick % sequence.frames.length] ?? 0;

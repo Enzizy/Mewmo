@@ -69,7 +69,7 @@ export default function ProcessingScreen() {
 
   return (
     <AppScreen scroll={false} background={colors.paper}>
-      <View style={styles.header}><Text style={styles.title}>SORTING...</Text><Text style={styles.support}>{step < 2 ? 'Your cat is securely sending the recording' : 'Your cat is organizing your thoughts'}</Text></View>
+      <View style={styles.header}><Text style={styles.title}>Sorting…</Text><Text style={styles.support}>{step < 2 ? 'Your cat is securely sending the recording' : 'Your cat is organizing your thoughts'}</Text></View>
       <View style={styles.diagram}>
         <View style={styles.mascot}><PixelCat pose="sorting" size={116} speech="ON IT" /></View>
         {categories.map((category, index) => {
@@ -94,7 +94,7 @@ export default function ProcessingScreen() {
 
 const styles = themedStyles(() => ({
   header: { marginTop: 48, alignItems: 'center' },
-  title: { fontFamily: fonts.bodyBold, fontSize: 34, color: colors.ink },
+  title: { fontFamily: fonts.bodyBold, fontSize: 30, letterSpacing: -0.6, color: colors.ink },
   support: { marginTop: 6, fontFamily: fonts.body, fontSize: 14, color: colors.secondary },
   diagram: { flex: 1, minHeight: 280, position: 'relative', alignItems: 'center', justifyContent: 'center' },
   mascot: { zIndex: 2, width: 116, height: 116, alignItems: 'center', justifyContent: 'center' },

@@ -11,6 +11,7 @@ import {
   InvestmentTransaction,
   MarketQuote,
   MonthlyBudget,
+  PaymentCard,
   Project,
   ProjectSession,
   RecurringRule,
@@ -276,6 +277,33 @@ async function openAndMigrate() {
     `);
   }
 
+  if (version < 7) {
+    // Card balances are tracked by hand and kept apart from the wallet ledger.
+    // last4 is constrained so a full card number can never be stored.
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS payment_cards (
+        id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('debit', 'credit')),
+        name TEXT NOT NULL,
+        issuer TEXT,
+        network TEXT,
+        last4 TEXT CHECK(last4 IS NULL OR (length(last4) = 4 AND last4 NOT GLOB '*[^0-9]*')),
+        expiry_month INTEGER CHECK(expiry_month IS NULL OR expiry_month BETWEEN 1 AND 12),
+        expiry_year INTEGER,
+        color TEXT NOT NULL,
+        balance_minor INTEGER NOT NULL DEFAULT 0 CHECK(balance_minor >= 0),
+        balance_updated_at TEXT NOT NULL,
+        credit_limit_minor INTEGER CHECK(credit_limit_minor IS NULL OR credit_limit_minor >= 0),
+        due_day INTEGER CHECK(due_day IS NULL OR due_day BETWEEN 1 AND 31),
+        statement_day INTEGER CHECK(statement_day IS NULL OR statement_day BETWEEN 1 AND 31),
+        note TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      PRAGMA user_version = 7;
+    `);
+  }
+
   await migrateLegacyStorage(db);
   return db;
 }
@@ -317,7 +345,7 @@ export async function generateDueOccurrences() {
 
 export async function loadAppData(): Promise<AppDataSnapshot> {
   const db = await initializeDatabase();
-  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, occurrences, budgets, savingsGoals, goalSuggestions, reviewProposals, activity, walletSettings] = await Promise.all([
+  const [itemRows, dumpRows, projects, sessions, transactions, investments, quotes, recurringRules, occurrences, budgets, savingsGoals, goalSuggestions, reviewProposals, activity, walletSettings, cards] = await Promise.all([
     db.getAllAsync<ThoughtItemRow>('SELECT * FROM thought_items ORDER BY created_at DESC'),
     db.getAllAsync<VoiceDumpRow>('SELECT * FROM voice_dumps ORDER BY created_at DESC'),
     db.getAllAsync<ProjectRow>('SELECT * FROM projects ORDER BY updated_at DESC'),
@@ -333,6 +361,7 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
     db.getAllAsync<ReviewProposalRow>('SELECT * FROM review_proposals ORDER BY created_at DESC'),
     db.getAllAsync<ActivityEventRow>('SELECT * FROM activity_events ORDER BY created_at DESC'),
     db.getAllAsync<SettingRow>('SELECT key, value FROM settings WHERE key IN (?, ?, ?)', WALLET_OPENING_BALANCE_KEY, WALLET_TRACKING_START_KEY, HOME_PREFERENCES_KEY),
+    db.getAllAsync<PaymentCardRow>('SELECT * FROM payment_cards ORDER BY kind = \'credit\', created_at'),
   ]);
 
   const openingBalanceValue = walletSettings.find((row) => row.key === WALLET_OPENING_BALANCE_KEY)?.value;
@@ -361,6 +390,7 @@ export async function loadAppData(): Promise<AppDataSnapshot> {
       if (!organized) return [];
       return [{ id: row.id, source: row.source as ReviewProposal['source'], organized, recording: row.recording_json ? safeObject<NonNullable<ReviewProposal['recording']>>(row.recording_json) : undefined, createdAt: row.created_at }];
     }),
+    cards: cards.map(fromPaymentCardRow),
     homePreferences: normalizeHomePreferences(homePreferencesValue ? safeObject<Partial<HomePreferences>>(homePreferencesValue) : DEFAULT_HOME_PREFERENCES),
     walletSetup,
     activity: activity.map((row) => ({ id: row.id, kind: row.kind as ActivityEvent['kind'], title: row.title, xp: row.xp, createdAt: row.created_at, sourceId: row.source_id ?? undefined })),
@@ -608,6 +638,16 @@ export async function saveInvestmentPurchase(investment: InvestmentTransaction, 
   });
 }
 
+export async function savePaymentCard(card: PaymentCard) {
+  const db = await initializeDatabase();
+  await insertPaymentCard(db, card);
+}
+
+export async function removePaymentCard(id: string) {
+  const db = await initializeDatabase();
+  await db.runAsync('DELETE FROM payment_cards WHERE id = ?', id);
+}
+
 export async function saveMarketQuote(quote: MarketQuote) {
   const db = await initializeDatabase();
   await db.runAsync('INSERT OR REPLACE INTO market_quotes (asset, price_minor, usd_price_minor, usd_php, as_of, source) VALUES (?, ?, ?, ?, ?, ?)', quote.asset, quote.priceMinor, quote.usdPriceMinor ?? null, quote.usdPhp ?? null, quote.asOf, quote.source);
@@ -664,7 +704,7 @@ export async function importAppData(data: AppDataSnapshot) {
       'goal_contribution_suggestions', 'savings_goals', 'financial_occurrences', 'recurring_occurrences',
       'recurring_rules', 'monthly_budgets', 'review_proposals', 'activity_events', 'market_quotes',
       'investment_transactions', 'financial_transactions', 'project_sessions', 'projects',
-      'voice_dumps', 'thought_items',
+      'voice_dumps', 'thought_items', 'payment_cards',
     ]) {
       await txn.runAsync(`DELETE FROM ${table}`);
     }
@@ -715,6 +755,7 @@ export async function importAppData(data: AppDataSnapshot) {
       await txn.runAsync('INSERT OR REPLACE INTO review_proposals (id, source, organized_json, recording_json, created_at) VALUES (?, ?, ?, ?, ?)', proposal.id, proposal.source, JSON.stringify(proposal.organized), proposal.recording ? JSON.stringify(proposal.recording) : null, proposal.createdAt);
     }
     for (const event of data.activity) await insertActivity(txn, event);
+    for (const card of data.cards) await insertPaymentCard(txn, card);
 
     await txn.runAsync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', HOME_PREFERENCES_KEY, JSON.stringify(normalizeHomePreferences(data.homePreferences)));
     if (data.walletSetup) {
@@ -808,6 +849,36 @@ function fromFinancialTransactionRow(row: FinancialTransactionRow): FinancialTra
   };
 }
 
+async function insertPaymentCard(executor: SqlExecutor, card: PaymentCard) {
+  await executor.runAsync(`INSERT OR REPLACE INTO payment_cards
+    (id, kind, name, issuer, network, last4, expiry_month, expiry_year, color, balance_minor, balance_updated_at, credit_limit_minor, due_day, statement_day, note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  card.id, card.kind, card.name, card.issuer ?? null, card.network ?? null, card.last4 ?? null, card.expiryMonth ?? null, card.expiryYear ?? null, card.color, card.balanceMinor, card.balanceUpdatedAt,
+  card.kind === 'credit' ? card.creditLimitMinor ?? null : null, card.kind === 'credit' ? card.dueDay ?? null : null, card.kind === 'credit' ? card.statementDay ?? null : null, card.note ?? null, card.createdAt, card.updatedAt);
+}
+
+function fromPaymentCardRow(row: PaymentCardRow): PaymentCard {
+  return {
+    id: row.id,
+    kind: row.kind as PaymentCard['kind'],
+    name: row.name,
+    issuer: row.issuer ?? undefined,
+    network: (row.network as PaymentCard['network']) ?? undefined,
+    last4: row.last4 ?? undefined,
+    expiryMonth: row.expiry_month ?? undefined,
+    expiryYear: row.expiry_year ?? undefined,
+    color: row.color,
+    balanceMinor: row.balance_minor,
+    balanceUpdatedAt: row.balance_updated_at,
+    creditLimitMinor: row.credit_limit_minor ?? undefined,
+    dueDay: row.due_day ?? undefined,
+    statementDay: row.statement_day ?? undefined,
+    note: row.note ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 async function insertInvestmentTransaction(executor: SqlExecutor, investment: InvestmentTransaction) {
   await executor.runAsync(`INSERT OR REPLACE INTO investment_transactions
     (id, asset, quantity, unit_price_minor, amount_minor, fees_minor, occurred_at, source_dump_id, cash_transaction_id)
@@ -857,6 +928,7 @@ type SettingRow = { key: string; value: string };
 type FinancialOccurrenceRow = { id: string; rule_id: string; kind: string; title: string; category: string; planned_amount_minor: number; scheduled_date: string; due_date: string; asset: string | null; status: string; actual_amount_minor: number | null; actual_date: string | null; quantity: string | null; fees_minor: number | null; note: string | null; transaction_id: string | null; investment_id: string | null; created_at: string; updated_at: string; resolved_at: string | null };
 type SavingsGoalRow = { id: string; name: string; target_minor: number; saved_minor: number; payday_contribution_minor: number; target_date: string | null; active: number; created_at: string; updated_at: string };
 type GoalSuggestionRow = { id: string; goal_id: string; source_transaction_id: string; amount_minor: number; status: string; created_at: string; resolved_at: string | null };
+type PaymentCardRow = { id: string; kind: string; name: string; issuer: string | null; network: string | null; last4: string | null; expiry_month: number | null; expiry_year: number | null; color: string; balance_minor: number; balance_updated_at: string; credit_limit_minor: number | null; due_day: number | null; statement_day: number | null; note: string | null; created_at: string; updated_at: string };
 type ReviewProposalRow = { id: string; source: string; organized_json: string; recording_json: string | null; created_at: string };
 
 async function createDueRecurringOccurrences(db: SQLite.SQLiteDatabase) {

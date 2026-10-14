@@ -49,7 +49,7 @@ export default function InvestmentsScreen() {
   return (
     <AppScreen tabbed assistant={!form} onRefresh={data.reload}>
       <ScreenHeader back />
-      <PageHeader title="Investments" supporting="Record BTC and VOO purchases, then refresh prices to estimate what they are worth now." action={<Pressable accessibilityRole="button" onPress={() => setForm('investment')} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addButtonText}>Add</Text></Pressable>} />
+      <PageHeader title="Investments" supporting="Record BTC and VOO purchases, then refresh prices to estimate what they are worth now." action={<Pressable accessibilityRole="button" onPress={() => setForm('investment')} style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addButtonText}>Add holding</Text></Pressable>} />
 
       <View style={styles.toolbar}>
         <View accessibilityRole="tablist" style={styles.currencyToggle}>{(['PHP', 'USD'] as const).map((value) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: currency === value, disabled: value === 'USD' && !summary.usdPhp }} key={value} onPress={() => chooseCurrency(value)} style={[styles.currencyOption, currency === value && styles.currencyActive, value === 'USD' && !summary.usdPhp && styles.currencyDisabled]}><Text style={[styles.currencyText, currency === value && styles.currencyTextActive]}>{value}</Text></Pressable>)}</View>

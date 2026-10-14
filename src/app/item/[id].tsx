@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
 import { useAppDialog } from '@/components/AppDialog';
-import { categoryMeta } from '@/components/CategoryIcon';
+import { CategoryIcon, categoryMeta } from '@/components/CategoryIcon';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, themedStyles } from '@/constants/theme';
+import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { confirmAction } from '@/utils/confirm-action';
+import { dateLabelFor, timeLabelFor } from '@/utils/date';
 import { useTheme } from '@/store/ThemeContext';
 
 export default function ItemDetailScreen() {
@@ -16,7 +17,7 @@ export default function ItemDetailScreen() {
   const { showDialog } = useAppDialog();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { items, toggleComplete, deleteItem, updateTitle, scheduleTomorrow, addSubtask, toggleSubtask } = useItems();
+  const { items, dumps, toggleComplete, deleteItem, updateTitle, scheduleTomorrow, addSubtask, toggleSubtask } = useItems();
   const item = items.find((candidate) => candidate.id === id);
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(item?.title ?? '');
@@ -24,6 +25,9 @@ export default function ItemDetailScreen() {
 
   if (!item) return <AppScreen><ScreenHeader back /><View style={styles.notFound}><Text style={styles.notFoundTitle}>Item not found</Text><Text style={styles.notFoundText}>It may have been deleted.</Text></View></AppScreen>;
   const meta = categoryMeta[item.category];
+  const overdue = Boolean(!item.completed && item.dueAt && Date.parse(item.dueAt) < Date.now());
+  const subtasks = item.subtasks ?? [];
+  const subtasksDone = subtasks.filter((subtask) => subtask.completed).length;
   const reportUpdateError = (error: unknown) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
   const saveTitle = async () => {
     if (!draftTitle.trim()) return;
@@ -35,14 +39,21 @@ export default function ItemDetailScreen() {
 
   return (
     <AppScreen background={colors.paper}>
-      <ScreenHeader back action={<Pressable onPress={() => setEditing(true)}><Feather name="edit-3" size={20} color={colors.ink} /></Pressable>} />
-      <Text style={[styles.kicker, { color: meta.color }]}>{meta.label.toUpperCase()}</Text>
+      <ScreenHeader back action={<Pressable accessibilityRole="button" accessibilityLabel="Edit item title" onPress={() => setEditing(true)}><Feather name="edit-3" size={20} color={colors.ink} /></Pressable>} />
+      <View style={[styles.kicker, { backgroundColor: meta.soft }]}><CategoryIcon category={item.category} size={13} contained={false} /><Text style={[styles.kickerText, { color: meta.color }]}>{meta.label}{item.completed ? ' · Done' : ''}</Text></View>
       {editing ? <View style={styles.editRow}><TextInput autoFocus value={draftTitle} onChangeText={setDraftTitle} style={styles.titleInput} onSubmitEditing={() => void saveTitle()} /><Pressable accessibilityRole="button" accessibilityLabel="Save item title" onPress={() => void saveTitle()} style={styles.save}><Feather name="check" size={20} color={colors.surface} /></Pressable></View> : <Text style={[styles.title, item.completed && styles.done]}>{item.title}</Text>}
-      <View style={styles.metadata}><View style={styles.metaItem}><Feather name="calendar" size={15} color={colors.secondary} /><Text style={styles.metaText}>{item.dateLabel}{item.time ? `, ${item.time}` : ''}</Text></View><View style={styles.metaItem}><Feather name="folder" size={15} color={colors.secondary} /><Text style={styles.metaText}>Personal</Text></View></View>
+      <View style={styles.metadata}>
+        <MetaRow icon={item.category === 'reminder' ? 'bell' : 'calendar'} label={item.category === 'reminder' ? 'Reminds' : 'Due'} value={item.dueAt ? `${dateLabelFor(item.dueAt)}, ${timeLabelFor(item.dueAt)}` : 'No date set'} tone={overdue ? 'danger' : undefined} />
+        {item.recurrence ? <MetaRow icon="repeat" label="Repeats" value={item.recurrence.frequency[0].toUpperCase() + item.recurrence.frequency.slice(1)} /> : null}
+        {item.category === 'reminder' ? <MetaRow icon={item.reminderEnabled === false ? 'bell-off' : 'smartphone'} label="Alert" value={item.reminderEnabled === false ? 'Paused' : 'On'} /> : null}
+        {item.createdAt ? <MetaRow icon="clock" label="Added" value={dateLabelFor(item.createdAt)} /> : null}
+        {item.sourceDumpId && dumps.some((dump) => dump.id === item.sourceDumpId) ? <Pressable accessibilityRole="link" onPress={() => router.push({ pathname: '/dump/[id]', params: { id: item.sourceDumpId! } })}><MetaRow icon="mic" label="Source" value="Open voice note" link /></Pressable> : null}
+      </View>
 
       {item.category === 'task' && <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Checklist</Text>
-        {(item.subtasks ?? []).map((subtask) => <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: subtask.completed }} key={subtask.id} onPress={() => toggleSubtask(item.id, subtask.id)} style={styles.subtask}><View style={[styles.check, subtask.completed && styles.checkDone]}>{subtask.completed && <Feather name="check" size={13} color={colors.surface} />}</View><Text style={[styles.subtaskText, subtask.completed && styles.subtaskDone]}>{subtask.title}</Text></Pressable>)}
+        <View style={styles.sectionHead}><Text style={styles.sectionTitle}>Checklist</Text>{subtasks.length ? <Text style={styles.sectionCount}>{subtasksDone} of {subtasks.length} done</Text> : null}</View>
+        {subtasks.length ? <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${(subtasksDone / subtasks.length) * 100}%` }]} /></View> : null}
+        {subtasks.map((subtask) => <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: subtask.completed }} key={subtask.id} onPress={() => toggleSubtask(item.id, subtask.id)} style={styles.subtask}><View style={[styles.check, subtask.completed && styles.checkDone]}>{subtask.completed && <Feather name="check" size={13} color={colors.surface} />}</View><Text style={[styles.subtaskText, subtask.completed && styles.subtaskDone]}>{subtask.title}</Text></Pressable>)}
         <View style={styles.addRow}><TextInput value={newSubtask} onChangeText={setNewSubtask} onSubmitEditing={add} placeholder="Add an item" placeholderTextColor={colors.muted} style={styles.addInput} /><Pressable accessibilityLabel="Add checklist item" onPress={add} style={styles.addButton}><Feather name="plus" size={19} color={colors.terracotta} /></Pressable></View>
       </View>}
 
@@ -55,22 +66,34 @@ export default function ItemDetailScreen() {
   );
 }
 
+function MetaRow({ icon, label, value, tone, link }: { icon: keyof typeof Feather.glyphMap; label: string; value: string; tone?: 'danger'; link?: boolean }) {
+  return <View style={styles.metaRow}><Feather name={icon} size={15} color={tone === 'danger' ? colors.danger : colors.secondary} /><Text style={styles.metaLabel}>{label}</Text><Text style={[styles.metaValue, tone === 'danger' && styles.metaDanger, link && styles.metaLink]}>{value}</Text>{link ? <Feather name="chevron-right" size={15} color={colors.accent} /> : null}</View>;
+}
+
 function Action({ icon, label, danger, onPress }: { icon: keyof typeof Feather.glyphMap; label: string; danger?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" onPress={onPress} style={styles.secondaryAction}><Feather name={icon} size={18} color={danger ? colors.danger : colors.secondary} /><Text style={[styles.secondaryText, danger && styles.dangerText]}>{label}</Text></Pressable>;
 }
 
 const styles = themedStyles(() => ({
-  kicker: { marginTop: 6, fontFamily: fonts.bodyBold, fontSize: 11, letterSpacing: 1.5 },
+  kicker: { alignSelf: 'flex-start', marginTop: 6, paddingHorizontal: 10, paddingVertical: 5, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full },
+  kickerText: { fontFamily: fonts.bodySemiBold, fontSize: 12 },
   title: { marginTop: 10, fontFamily: fonts.bodyBold, fontSize: 38, lineHeight: 43, color: colors.ink },
   done: { color: colors.muted, textDecorationLine: 'line-through' },
   editRow: { marginTop: 8, flexDirection: 'row', gap: 8 },
   titleInput: { flex: 1, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: colors.ink, fontFamily: fonts.bodyBold, fontSize: 30, color: colors.ink },
   save: { width: 44, height: 44, borderRadius: 10, backgroundColor: colors.dark, alignItems: 'center', justifyContent: 'center' },
-  metadata: { flexDirection: 'row', gap: 22, marginTop: 20, paddingBottom: 24, borderBottomWidth: 1, borderBottomColor: colors.border },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  metaText: { fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
+  metadata: { marginTop: 18, paddingBottom: 18, gap: 2, borderBottomWidth: 1, borderBottomColor: colors.border },
+  metaRow: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  metaLabel: { width: 64, fontFamily: fonts.body, fontSize: 13, color: colors.secondary },
+  metaValue: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.ink },
+  metaDanger: { color: colors.danger },
+  metaLink: { color: colors.accent },
   section: { paddingVertical: 25, borderBottomWidth: 1, borderBottomColor: colors.border },
   sectionTitle: { marginBottom: 14, fontFamily: fonts.bodySemiBold, fontSize: 16, color: colors.ink },
+  sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionCount: { fontFamily: fonts.bodyMedium, fontSize: 12, fontVariant: ['tabular-nums'], color: colors.secondary },
+  progressTrack: { height: 4, marginTop: -6, marginBottom: 10, overflow: 'hidden', borderRadius: 2, backgroundColor: colors.border },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: colors.green },
   subtask: { minHeight: 43, flexDirection: 'row', alignItems: 'center', gap: 12 },
   check: { width: 21, height: 21, borderRadius: 5, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
   checkDone: { backgroundColor: colors.green, borderColor: colors.green },

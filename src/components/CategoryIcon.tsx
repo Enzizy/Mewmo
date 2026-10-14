@@ -4,11 +4,13 @@ import { colors, themedStyles } from '@/constants/theme';
 import { Category } from '@/types';
 import { useTheme } from '@/store/ThemeContext';
 
+// Getters, so each read resolves against the active theme instead of the
+// palette that happened to be active when this module first loaded.
 export const categoryMeta: Record<Category, { label: string; color: string; soft: string }> = {
-  task: { label: 'Task', color: colors.green, soft: colors.greenSoft },
-  reminder: { label: 'Reminder', color: colors.mustard, soft: colors.mustardSoft },
-  idea: { label: 'Idea', color: colors.blue, soft: colors.blueSoft },
-  note: { label: 'Note', color: colors.terracotta, soft: colors.terracottaSoft },
+  get task() { return { label: 'Task', color: colors.green, soft: colors.greenSoft }; },
+  get reminder() { return { label: 'Reminder', color: colors.mustard, soft: colors.mustardSoft }; },
+  get idea() { return { label: 'Idea', color: colors.blue, soft: colors.blueSoft }; },
+  get note() { return { label: 'Note', color: colors.terracotta, soft: colors.terracottaSoft }; },
 };
 
 export function CategoryIcon({ category, size = 18, contained = true }: { category: Category; size?: number; contained?: boolean }) {

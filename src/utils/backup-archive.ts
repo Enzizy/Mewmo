@@ -7,6 +7,7 @@ import type {
   InvestmentTransaction,
   MarketQuote,
   MonthlyBudget,
+  PaymentCard,
   Project,
   ProjectSession,
   RecurringRule,
@@ -18,7 +19,8 @@ import type {
 } from '../types/index.ts';
 import { normalizeHomePreferences } from '../features/home/home-preferences.ts';
 
-export const BACKUP_VERSION = 1;
+// 2 added payment cards. Older apps refuse a v2 archive rather than drop cards silently.
+export const BACKUP_VERSION = 2;
 
 /** Every collection the importer restores, in the order it is safe to insert. */
 export type BackupArchive = {
@@ -74,6 +76,7 @@ export function parseBackupArchive(text: string): ParsedBackup {
     savingsGoals: collect('savingsGoals', savingsGoal),
     goalSuggestions: collect('goalSuggestions', goalSuggestion),
     reviewProposals: collect('reviewProposals', reviewProposal),
+    cards: collect('cards', paymentCard),
     homePreferences: normalizeHomePreferences(isRecord(source.homePreferences) ? source.homePreferences : {}),
     walletSetup: walletSetup(source.walletSetup) ?? undefined,
     activity: collect('activity', activityEvent),
@@ -93,7 +96,7 @@ export function countRecords(data: AppDataSnapshot) {
   return data.items.length + data.dumps.length + data.projects.length + data.projectSessions.length
     + data.transactions.length + data.investments.length + data.quotes.length + data.recurringRules.length
     + data.financialOccurrences.length + data.budgets.length + data.savingsGoals.length
-    + data.goalSuggestions.length + data.reviewProposals.length + data.activity.length;
+    + data.goalSuggestions.length + data.reviewProposals.length + data.activity.length + (data.cards?.length ?? 0);
 }
 
 /** A one-line human summary such as "412 records · 96 money, 38 tasks". */
@@ -101,6 +104,7 @@ export function describeBackup(data: AppDataSnapshot) {
   const parts = [
     [data.transactions.length, 'money'],
     [data.investments.length, 'investment'],
+    [data.cards?.length ?? 0, 'card'],
     [data.items.length, 'task and reminder'],
     [data.savingsGoals.length, 'savings goal'],
     [data.projects.length, 'project'],
@@ -418,6 +422,39 @@ function reviewProposal(value: unknown): ReviewProposal | null {
     // The recording file is outside the archive, so a restored proposal is text only.
     recording: undefined,
     createdAt: isoDate(value.createdAt) ?? new Date().toISOString(),
+  };
+}
+
+function paymentCard(value: unknown): PaymentCard | null {
+  if (!isRecord(value)) return null;
+  const id = text(value.id);
+  const name = text(value.name);
+  const kind = oneOf(value.kind, ['debit', 'credit'] as const);
+  const balanceMinor = minorAmount(value.balanceMinor);
+  if (!id || !name || !kind || balanceMinor == null) return null;
+  const createdAt = isoDate(value.createdAt) ?? new Date().toISOString();
+  const last4 = text(value.last4);
+  const expiryMonth = wholeNumber(value.expiryMonth);
+  const dayOfMonth = (day: unknown) => { const parsed = wholeNumber(day); return parsed != null && parsed >= 1 && parsed <= 31 ? parsed : undefined; };
+  return {
+    id,
+    kind,
+    name,
+    issuer: text(value.issuer) ?? undefined,
+    network: oneOf(value.network, ['visa', 'mastercard', 'amex', 'jcb', 'unionpay', 'other'] as const) ?? undefined,
+    // Anything other than exactly four digits is dropped rather than stored.
+    last4: last4 && /^\d{4}$/.test(last4) ? last4 : undefined,
+    expiryMonth: expiryMonth != null && expiryMonth >= 1 && expiryMonth <= 12 ? expiryMonth : undefined,
+    expiryYear: wholeNumber(value.expiryYear) ?? undefined,
+    color: text(value.color) ?? 'midnight',
+    balanceMinor,
+    balanceUpdatedAt: isoDate(value.balanceUpdatedAt) ?? createdAt,
+    creditLimitMinor: kind === 'credit' ? minorAmount(value.creditLimitMinor) ?? undefined : undefined,
+    dueDay: kind === 'credit' ? dayOfMonth(value.dueDay) : undefined,
+    statementDay: kind === 'credit' ? dayOfMonth(value.statementDay) : undefined,
+    note: text(value.note) ?? undefined,
+    createdAt,
+    updatedAt: isoDate(value.updatedAt) ?? createdAt,
   };
 }
 

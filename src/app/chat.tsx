@@ -1,31 +1,42 @@
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, usePathname, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, NativeSyntheticEvent, Platform, Pressable, ScrollView, Text, TextInput, TextInputKeyPressEventData, View } from 'react-native';
+import Animated, { cancelAnimation, FadeIn, FadeInDown, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { AppScreen } from '@/components/AppScreen';
+import { useAppDialog } from '@/components/AppDialog';
 import { PixelCat } from '@/components/PixelCat';
+import { RichText } from '@/components/RichText';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { colors, fonts, themedStyles } from '@/constants/theme';
+import { colors, fonts, motion, radius, themedStyles } from '@/constants/theme';
+import { ASSISTANT_STARTERS } from '@/features/assistant/starters';
+import { suggestionKindMeta } from '@/features/assistant/suggestion-kinds';
 import { askPersonalAssistant, AssistantMessage, transcribeAssistantRecording } from '@/services/assistantApi';
 import { useItems } from '@/store/ItemsContext';
 import { useTheme } from '@/store/ThemeContext';
+import { ReviewProposal } from '@/types';
 
 const HISTORY_KEY = 'lifedesk.assistant.chat.v1';
 const MAX_MESSAGES = 40;
 const MAX_INPUT = 4000;
-const suggestions = ['Remind me tomorrow to call Mom', 'Log a ₱450 lunch expense', 'Explain something I’m learning', 'What is safe for me to spend?'];
 type ChatMessage = AssistantMessage & { reviewId?: string };
-const welcome: ChatMessage = { role: 'assistant', text: 'Hi — I can answer general questions and help organize your LifeDesk. Ask about your schedule, or say “remind me tomorrow”, “log an expense”, or “add an investment”. I’ll ask for details when needed, and proposed changes wait in Review until you confirm them.' };
+const welcome: ChatMessage = { role: 'assistant', text: 'Ask me anything. I can also help plan your day, create reminders, and log money. You confirm changes before I save them.' };
 
 export default function ChatScreen() {
   useTheme();
   const router = useRouter();
+  const pathname = usePathname();
+  // The desktop layout shows this screen as a tab, where a back arrow has nowhere useful to go.
+  const asTab = pathname === '/capture';
+  const params = useLocalSearchParams<{ prompt?: string; focus?: string }>();
+  const { showDialog } = useAppDialog();
   const data = useItems();
   const { pendingRecording, setPendingRecording, queueReviewProposal } = data;
   const [messages, setMessages] = useState<ChatMessage[]>([welcome]);
   const [input, setInput] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [failedQuestion, setFailedQuestion] = useState<string | null>(null);
@@ -34,7 +45,11 @@ export default function ChatScreen() {
   const [hydrated, setHydrated] = useState(false);
   const changedBeforeHydration = useRef(false);
   const transcribedUri = useRef<string | null>(null);
+  const consumedPrompt = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
+  const inputRef = useRef<TextInput>(null);
+  const hasConversation = messages.some((message) => message.role === 'user');
+  const ready = hydrated && data.hydrated;
 
   useEffect(() => {
     let active = true;
@@ -43,7 +58,11 @@ export default function ChatScreen() {
       if (raw && !changedBeforeHydration.current) {
         try {
           const saved = JSON.parse(raw) as ChatMessage[];
-          if (Array.isArray(saved) && saved.length && saved.every((message) => message && (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string' && (!message.reviewId || typeof message.reviewId === 'string'))) setMessages(saved.slice(-MAX_MESSAGES));
+          if (Array.isArray(saved) && saved.length && saved.every((message) => message && (message.role === 'user' || message.role === 'assistant') && typeof message.text === 'string' && (!message.reviewId || typeof message.reviewId === 'string'))) {
+            const recent = saved.slice(-MAX_MESSAGES);
+            if (recent[0]?.role === 'assistant' && recent[0].text.startsWith('Hi — I can answer general questions and help organize your LifeDesk.')) recent[0] = welcome;
+            setMessages(recent);
+          }
         } catch { /* Start with the welcome message if local history is invalid. */ }
       }
       setHydrated(true);
@@ -103,6 +122,16 @@ export default function ChatScreen() {
     } finally { setSending(false); }
   };
 
+  // A starter tapped elsewhere (Home) arrives as a `prompt` param and is sent once.
+  useEffect(() => {
+    const prompt = typeof params.prompt === 'string' ? params.prompt.trim() : '';
+    if (!prompt) { consumedPrompt.current = null; return; }
+    if (consumedPrompt.current === prompt || !ready || sending) return;
+    consumedPrompt.current = prompt;
+    router.setParams({ prompt: undefined });
+    void send(prompt);
+  }, [params.prompt, ready, sending]);
+
   const discardPending = async () => {
     if (!pendingRecording) return;
     await FileSystem.deleteAsync(pendingRecording.uri, { idempotent: true }).catch(() => undefined);
@@ -110,27 +139,173 @@ export default function ChatScreen() {
     setTranscriptionError(null);
     transcribedUri.current = null;
   };
-  const clearConversation = () => { if (sending || transcribing || !hydrated) return; changedBeforeHydration.current = true; setMessages([welcome]); setSendError(null); setFailedQuestion(null); };
+  const clearConversation = () => {
+    if (sending || transcribing || !hydrated || messages.length <= 1) return;
+    showDialog({
+      title: 'Start a new chat?',
+      message: 'This conversation will be removed from this device. Saved LifeDesk records and pending reviews stay.',
+      tone: 'warning',
+      actions: [
+        { label: 'Keep chat', variant: 'secondary' },
+        { label: 'New chat', variant: 'danger', onPress: () => { changedBeforeHydration.current = true; setMessages([welcome]); setSendError(null); setFailedQuestion(null); } },
+      ],
+    });
+  };
 
-  return <AppScreen scroll={false} background={colors.paper}>
-    <ScreenHeader back title="ASK MY CAT" />
-    <View style={styles.intro}><View style={styles.introRow}><PixelCat pose="curious" size={66} speech="ASK AWAY" /><Pressable accessibilityRole="button" onPress={clearConversation}><Text style={styles.clear}>Clear chat</Text></Pressable></View><Text style={styles.privacy}>Your messages, voice recordings, and relevant saved records are sent to Gemini. Review changes before saving.</Text></View>
-    <ScrollView ref={scrollRef} style={styles.messageList} onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })} contentContainerStyle={styles.messages} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
-      {messages.map((message, index) => message.reviewId ? <ReviewCard key={`${message.reviewId}-${index}`} id={message.reviewId} available={data.reviewProposals.some((proposal) => proposal.id === message.reviewId)} onPress={() => router.push({ pathname: '/review', params: { id: message.reviewId! } })} /> : <View key={`${message.role}-${index}`} style={[styles.bubble, message.role === 'user' ? styles.userBubble : styles.catBubble]}><Text selectable style={[styles.message, message.role === 'user' && styles.userMessage]}>{message.text}</Text></View>)}
-      {sending ? <View style={[styles.bubble, styles.catBubble, styles.loading]}><ActivityIndicator size="small" color={colors.ink} /><Text style={styles.thinking}>THINKING...</Text></View> : null}
-      {sendError ? <View style={styles.errorBox}><Text style={styles.errorText}>{sendError}</Text><View style={styles.errorActions}><Pressable onPress={() => failedQuestion && send(failedQuestion, false)} disabled={!failedQuestion || sending}><Text style={styles.retryText}>Retry</Text></Pressable><Pressable onPress={() => { setSendError(null); setFailedQuestion(null); }}><Text style={styles.editText}>Keep editing</Text></Pressable></View></View> : null}
+  // Enter sends on the web; Shift+Enter keeps a newline, as in most chat apps.
+  const handleKeyPress = (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    if (Platform.OS !== 'web') return;
+    const native = event.nativeEvent as TextInputKeyPressEventData & { shiftKey?: boolean; isComposing?: boolean };
+    if (native.key === 'Enter' && !native.shiftKey && !native.isComposing) {
+      event.preventDefault();
+      void send();
+    }
+  };
+
+  const canSend = ready && !sending && !transcribing && Boolean(input.trim());
+  const nearLimit = input.length > MAX_INPUT - 400;
+
+  return <AppScreen scroll={false} docked background={colors.paper}>
+    <ScreenHeader back={!asTab} title="Assistant" action={<Pressable accessibilityRole="button" accessibilityLabel="Start a new chat" accessibilityState={{ disabled: !hasConversation }} disabled={!hasConversation} onPress={clearConversation} style={({ pressed }) => [styles.headerButton, !hasConversation && styles.hidden, pressed && styles.pressed]}><Feather name="edit" size={19} color={colors.ink} /></Pressable>} />
+    <ScrollView ref={scrollRef} style={styles.messageList} onContentSizeChange={() => { if (hasConversation) scrollRef.current?.scrollToEnd({ animated: true }); }} contentContainerStyle={[styles.messages, !hasConversation && styles.messagesEmpty]} showsVerticalScrollIndicator={false} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled">
+      {!hasConversation ? <EmptyChat disabled={!ready || sending} onStarter={(prompt) => void send(prompt)} /> : messages.map((message, index) => {
+        if (message.reviewId) return <ProposalCard key={`${message.reviewId}-${index}`} proposal={data.reviewProposals.find((proposal) => proposal.id === message.reviewId)} onPress={() => router.push({ pathname: '/review', params: { id: message.reviewId! } })} />;
+        if (message.role === 'user') return <Animated.View entering={FadeInDown.duration(motion.base)} key={`user-${index}`} style={styles.userRow}><View style={styles.userBubble}><Text selectable style={styles.userText}>{message.text}</Text></View></Animated.View>;
+        const grouped = index > 0 && messages[index - 1].role === 'assistant';
+        return <Animated.View entering={FadeIn.duration(motion.slow)} key={`assistant-${index}`} style={[styles.assistantRow, grouped && styles.assistantGrouped]}>{grouped ? <View style={styles.avatarSpacer} /> : <Avatar />}<View style={styles.assistantBody}><RichText text={message.text} /></View></Animated.View>;
+      })}
+      {sending ? <View style={styles.assistantRow}><Avatar /><View style={styles.typing}><TypingDots /></View></View> : null}
+      {sendError ? <View accessibilityRole="alert" style={styles.errorBox}><Feather name="alert-circle" size={17} color={colors.danger} /><View style={styles.errorMain}><Text style={styles.errorText}>{sendError}</Text><View style={styles.errorActions}><Pressable accessibilityRole="button" onPress={() => failedQuestion && send(failedQuestion, false)} disabled={!failedQuestion || sending} style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}><Feather name="refresh-cw" size={13} color={colors.paper} /><Text style={styles.retryText}>Retry</Text></Pressable><Pressable accessibilityRole="button" onPress={() => { setSendError(null); setFailedQuestion(null); inputRef.current?.focus(); }} style={styles.textButton}><Text style={styles.editText}>Edit message</Text></Pressable></View></View></View> : null}
     </ScrollView>
-    {!messages.some((message) => message.role === 'user') ? <View style={styles.suggestions}>{suggestions.map((suggestion) => <Pressable accessibilityRole="button" key={suggestion} disabled={!hydrated || sending} onPress={() => send(suggestion)} style={[styles.suggestion, (!hydrated || sending) && styles.disabled]}><Text style={styles.suggestionText}>{suggestion}</Text></Pressable>)}</View> : null}
-    {transcribing ? <Text style={styles.status}>TRANSCRIBING VOICE NOTE…</Text> : null}
-    {transcriptionError ? <View style={styles.voiceError}><Text style={styles.errorText}>{transcriptionError}</Text><View style={styles.errorActions}><Pressable onPress={() => { transcribedUri.current = null; setTranscriptionError(null); }}><Text style={styles.retryText}>Retry</Text></Pressable><Pressable onPress={discardPending}><Text style={styles.editText}>Discard</Text></Pressable></View></View> : null}
-    <View style={styles.composer}><TextInput accessibilityLabel="Ask a personal question" value={input} onChangeText={(value) => setInput(value.slice(0, MAX_INPUT))} editable={!transcribing && !sending} multiline maxLength={MAX_INPUT} onSubmitEditing={() => send()} placeholder="Ask anything or tell me what to organize…" placeholderTextColor={colors.muted} style={styles.input} /><Pressable accessibilityRole="button" accessibilityLabel="Record a voice request" disabled={!hydrated || sending || transcribing || Boolean(input.trim())} onPress={() => router.push('/record')} style={[styles.mic, (!hydrated || sending || transcribing || Boolean(input.trim())) && styles.disabled]}><Feather name="mic" size={19} color={colors.ink} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Send question" disabled={!hydrated || sending || !input.trim()} onPress={() => send()} style={[styles.send, (!hydrated || sending || !input.trim()) && styles.disabled]}><Feather name="arrow-up" size={20} color={colors.surface} /></Pressable></View>
+    {transcribing ? <View accessibilityLiveRegion="polite" style={styles.statusPill}><ActivityIndicator size="small" color={colors.accent} /><Text style={styles.status}>Transcribing your voice note…</Text></View> : null}
+    {transcriptionError ? <View accessibilityRole="alert" style={styles.voiceError}><Feather name="mic-off" size={16} color={colors.danger} /><View style={styles.errorMain}><Text style={styles.errorText}>{transcriptionError}</Text><View style={styles.errorActions}><Pressable accessibilityRole="button" onPress={() => { transcribedUri.current = null; setTranscriptionError(null); }} style={styles.textButton}><Text style={styles.retryLink}>Try again</Text></Pressable><Pressable accessibilityRole="button" onPress={discardPending} style={styles.textButton}><Text style={styles.editText}>Discard recording</Text></Pressable></View></View></View> : null}
+    <View style={[styles.composer, inputFocused && styles.composerFocused]}>
+      <TextInput
+        ref={inputRef}
+        accessibilityLabel="Message the assistant"
+        autoFocus={params.focus === '1'}
+        value={input}
+        onChangeText={(value) => setInput(value.slice(0, MAX_INPUT))}
+        onFocus={() => setInputFocused(true)}
+        onBlur={() => setInputFocused(false)}
+        onKeyPress={handleKeyPress}
+        editable={!transcribing && !sending}
+        multiline
+        maxLength={MAX_INPUT}
+        placeholder={transcribing ? 'Transcribing your note…' : 'Ask or tell me anything…'}
+        placeholderTextColor={colors.muted}
+        style={styles.input}
+      />
+      <View style={styles.composerActions}>
+        {nearLimit ? <Text style={styles.counter}>{MAX_INPUT - input.length}</Text> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel="Record a voice message" disabled={!hydrated || sending || transcribing} onPress={() => router.push('/record')} style={({ pressed }) => [styles.mic, (!hydrated || sending || transcribing) && styles.disabled, pressed && styles.pressed]}><Feather name="mic" size={19} color={colors.ink} /></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Send message" accessibilityState={{ disabled: !canSend }} disabled={!canSend} onPress={() => send()} style={({ pressed }) => [styles.send, !canSend && styles.sendIdle, pressed && styles.pressed]}><Feather name="arrow-up" size={19} color={canSend ? colors.paper : colors.muted} /></Pressable>
+      </View>
+    </View>
   </AppScreen>;
 }
 
-function ReviewCard({ id, available, onPress }: { id: string; available: boolean; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" disabled={!available} onPress={onPress} style={[styles.reviewButton, !available && styles.reviewUnavailable]}><Feather name="inbox" size={17} color={available ? colors.paper : colors.muted} /><Text style={[styles.reviewButtonText, !available && styles.unavailableText]}>{available ? 'Review proposed changes' : 'This proposal is no longer available'}</Text>{available ? <Feather name="chevron-right" size={17} color={colors.paper} /> : null}</Pressable>;
+function EmptyChat({ disabled, onStarter }: { disabled: boolean; onStarter: (prompt: string) => void }) {
+  return <Animated.View entering={FadeIn.duration(motion.slow)} style={styles.empty}>
+    <PixelCat pose="curious" size={84} />
+    <Text accessibilityRole="header" style={styles.emptyTitle}>What can I help with?</Text>
+    <Text style={styles.emptyText}>Ask a question, plan your day, or tell me what to remember. I suggest changes; you confirm before anything is saved.</Text>
+    <View style={styles.starters}>{ASSISTANT_STARTERS.map((starter) => <Pressable accessibilityRole="button" key={starter.label} disabled={disabled} onPress={() => onStarter(starter.prompt)} style={({ pressed }) => [styles.starter, disabled && styles.disabled, pressed && styles.starterPressed]}><View style={styles.starterIcon}><Feather name={starter.icon} size={15} color={colors.ink} /></View><Text style={styles.starterText}>{starter.label}</Text></Pressable>)}</View>
+    <View style={styles.privacy}><Feather name="lock" size={12} color={colors.muted} /><Text style={styles.privacyText}>Messages and relevant saved records are sent to Gemini to answer.</Text></View>
+  </Animated.View>;
+}
+
+function Avatar() {
+  return <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.avatar}><PixelCat pose="idle" size={26} still /></View>;
+}
+
+function TypingDots() {
+  const reduceMotion = useReducedMotion();
+  return <View accessible accessibilityLabel="The assistant is writing a reply" accessibilityRole="progressbar" style={styles.dots}>{[0, 1, 2].map((index) => <Dot key={index} index={index} animate={!reduceMotion} />)}</View>;
+}
+
+function Dot({ index, animate }: { index: number; animate: boolean }) {
+  const level = useSharedValue(animate ? 0.3 : 0.6);
+  useEffect(() => {
+    if (!animate) return undefined;
+    level.value = withDelay(index * 150, withRepeat(withSequence(withTiming(1, { duration: 340 }), withTiming(0.3, { duration: 340 })), -1));
+    return () => cancelAnimation(level);
+  }, [animate, index, level]);
+  const style = useAnimatedStyle(() => ({ opacity: level.value, transform: [{ translateY: (1 - level.value) * 2.5 }] }));
+  return <Animated.View style={[styles.dot, style]} />;
+}
+
+function ProposalCard({ proposal, onPress }: { proposal?: ReviewProposal; onPress: () => void }) {
+  if (!proposal) return <View style={styles.proposalDone}><Feather name="check-circle" size={15} color={colors.muted} /><Text style={styles.proposalDoneText}>These suggestions were already reviewed.</Text></View>;
+  const items = proposal.organized.items;
+  return <Animated.View entering={FadeInDown.duration(motion.base)} style={styles.proposal}>
+    <View style={styles.proposalHead}><Feather name="inbox" size={15} color={colors.accent} /><Text style={styles.proposalEyebrow}>Waiting for your confirmation</Text></View>
+    <View style={styles.proposalItems}>{items.slice(0, 3).map((item, index) => { const kind = suggestionKindMeta(item.category); return <View key={`${item.category}-${index}`} style={styles.proposalItem}><View style={[styles.kindIcon, { backgroundColor: kind.soft }]}><Feather name={kind.icon} size={14} color={kind.color} /></View><Text numberOfLines={1} style={styles.proposalTitle}>{item.title}</Text><Text style={styles.proposalKind}>{kind.label}</Text></View>; })}</View>
+    {items.length > 3 ? <Text style={styles.proposalMore}>+{items.length - 3} more</Text> : null}
+    <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.proposalButton, pressed && styles.pressed]}><Text style={styles.proposalButtonText}>Review {items.length} {items.length === 1 ? 'change' : 'changes'}</Text><Feather name="arrow-right" size={16} color={colors.paper} /></Pressable>
+  </Animated.View>;
 }
 
 const styles = themedStyles(() => ({
-  intro: { paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border }, introRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, clear: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.secondary }, privacy: { marginTop: 8, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary }, messageList: { flex: 1 }, messages: { paddingVertical: 16, gap: 10 }, bubble: { maxWidth: '88%', paddingHorizontal: 14, paddingVertical: 11, borderWidth: 1 }, catBubble: { alignSelf: 'flex-start', borderColor: colors.borderStrong, backgroundColor: colors.surface }, userBubble: { alignSelf: 'flex-end', borderColor: colors.ink, backgroundColor: colors.ink }, message: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.ink }, userMessage: { color: colors.surface }, loading: { flexDirection: 'row', alignItems: 'center', gap: 8 }, thinking: { fontFamily: fonts.bodySemiBold, fontSize: 10, color: colors.secondary }, suggestions: { paddingVertical: 10, gap: 7 }, suggestion: { minHeight: 42, paddingHorizontal: 12, justifyContent: 'center', borderWidth: 1, borderColor: colors.borderStrong }, suggestionText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.ink }, composer: { paddingTop: 10, paddingBottom: 8, flexDirection: 'row', gap: 8, borderTopWidth: 1, borderTopColor: colors.border, alignItems: 'flex-end' }, input: { flex: 1, minHeight: 48, maxHeight: 110, paddingHorizontal: 13, paddingVertical: 12, borderWidth: 1, borderColor: colors.borderStrong, fontFamily: fonts.body, fontSize: 14, color: colors.ink, backgroundColor: colors.surface }, mic: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface }, send: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink }, disabled: { opacity: 0.35 }, reviewButton: { alignSelf: 'flex-start', minHeight: 48, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.ink }, reviewUnavailable: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border }, reviewButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper }, unavailableText: { color: colors.muted }, errorBox: { padding: 12, borderWidth: 1, borderColor: colors.terracotta, backgroundColor: colors.dangerSoft }, voiceError: { paddingVertical: 8 }, errorText: { fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.terracotta }, errorActions: { flexDirection: 'row', alignItems: 'center', gap: 18, marginTop: 8 }, retryText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink }, editText: { fontFamily: fonts.body, fontSize: 12, color: colors.secondary }, status: { paddingVertical: 8, fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.secondary },
+  headerButton: { width: 44, height: 44, marginRight: -8, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
+  hidden: { opacity: 0 },
+  messageList: { flex: 1 },
+  messages: { paddingTop: 4, paddingBottom: 18, gap: 14 },
+  messagesEmpty: { flexGrow: 1, justifyContent: 'center' },
+  userRow: { alignItems: 'flex-end', paddingLeft: 48 },
+  userBubble: { paddingHorizontal: 15, paddingVertical: 10, borderRadius: 20, borderBottomRightRadius: 6, backgroundColor: colors.ink },
+  userText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22, color: colors.paper },
+  assistantRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingRight: 12 },
+  assistantGrouped: { marginTop: -6 },
+  avatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+  avatarSpacer: { width: 32 },
+  assistantBody: { flex: 1, minWidth: 0, paddingTop: 4 },
+  typing: { minHeight: 32, justifyContent: 'center' },
+  dots: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 11, alignSelf: 'flex-start', borderRadius: 16, backgroundColor: colors.background },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.secondary },
+  empty: { alignItems: 'center', paddingVertical: 12 },
+  emptyTitle: { marginTop: 14, textAlign: 'center', fontFamily: fonts.bodyBold, fontSize: 24, lineHeight: 30, letterSpacing: -0.5, color: colors.ink },
+  emptyText: { maxWidth: 360, marginTop: 7, textAlign: 'center', fontFamily: fonts.body, fontSize: 14, lineHeight: 21, color: colors.secondary },
+  starters: { width: '100%', maxWidth: 520, marginTop: 24, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  starter: { width: '48%', flexGrow: 1, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  starterPressed: { backgroundColor: colors.background },
+  starterIcon: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
+  starterText: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 13, lineHeight: 17, color: colors.ink },
+  privacy: { maxWidth: 360, marginTop: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  privacyText: { flexShrink: 1, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.muted },
+  proposal: { marginLeft: 42, padding: 14, gap: 10, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
+  proposalHead: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  proposalEyebrow: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.accent },
+  proposalItems: { gap: 8 },
+  proposalItem: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  kindIcon: { width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  proposalTitle: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.ink },
+  proposalKind: { fontFamily: fonts.body, fontSize: 11, color: colors.secondary },
+  proposalMore: { marginLeft: 35, fontFamily: fonts.body, fontSize: 11, color: colors.secondary },
+  proposalButton: { minHeight: 44, marginTop: 2, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.md, backgroundColor: colors.ink },
+  proposalButtonText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper },
+  proposalDone: { marginLeft: 42, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  proposalDoneText: { fontFamily: fonts.body, fontSize: 12, color: colors.muted },
+  errorBox: { padding: 13, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
+  errorMain: { flex: 1, minWidth: 0 },
+  errorText: { fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.ink },
+  errorActions: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  retryButton: { minHeight: 34, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 17, backgroundColor: colors.ink },
+  retryText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.paper },
+  textButton: { minHeight: 34, justifyContent: 'center' },
+  retryLink: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink },
+  editText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.secondary },
+  statusPill: { alignSelf: 'center', marginBottom: 8, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.full, backgroundColor: colors.accentSoft },
+  status: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.ink },
+  voiceError: { marginBottom: 8, padding: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 9, borderRadius: radius.md, backgroundColor: colors.dangerSoft },
+  composer: { minHeight: 56, paddingLeft: 16, paddingRight: 6, paddingVertical: 6, flexDirection: 'row', alignItems: 'flex-end', gap: 6, borderRadius: 28, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper },
+  composerFocused: { borderColor: colors.ink },
+  input: { flex: 1, minHeight: 42, maxHeight: 132, paddingTop: 11, paddingBottom: 11, fontFamily: fonts.body, fontSize: 15, lineHeight: 20, color: colors.ink, outlineStyle: 'none' } as never,
+  composerActions: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  counter: { marginRight: 4, fontFamily: fonts.bodyMedium, fontSize: 11, fontVariant: ['tabular-nums'], color: colors.mustard },
+  mic: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  send: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
+  sendIdle: { backgroundColor: colors.border },
+  disabled: { opacity: 0.4 },
+  pressed: { opacity: 0.7 },
 }));

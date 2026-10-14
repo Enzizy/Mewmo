@@ -2,9 +2,11 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
+import { useAppToast } from '@/components/AppToast';
 import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { ThoughtItem } from '@/types';
+import { itemWhenLabel } from '@/utils/date';
 import { CategoryIcon, categoryMeta } from './CategoryIcon';
 import { useTheme } from '@/store/ThemeContext';
 
@@ -12,16 +14,23 @@ export function ItemRow({ item, showDate = true }: { item: ThoughtItem; showDate
   useTheme();
   const router = useRouter();
   const { showDialog } = useAppDialog();
+  const { showToast } = useAppToast();
   const { toggleFavorite, toggleComplete } = useItems();
   const reportUpdateError = (error: unknown) => showDialog({ title: 'Could not update item', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
+  const toggle = async () => {
+    const completing = !item.completed;
+    await toggleComplete(item.id);
+    // Completed tasks leave the Focus list, so offer a way back.
+    if (completing) showToast({ message: 'Task completed', icon: 'check-circle', action: { label: 'Undo', onPress: () => toggleComplete(item.id).catch(reportUpdateError) } });
+  };
   return (
     <View style={styles.row}>
-      {item.category === 'task' ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: Boolean(item.completed) }} accessibilityLabel={`Mark ${item.title} ${item.completed ? 'incomplete' : 'complete'}`} onPress={() => void toggleComplete(item.id).catch(reportUpdateError)} style={({ pressed }) => [styles.checkTarget, pressed && styles.pressed]}>
+      {item.category === 'task' ? <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: Boolean(item.completed) }} accessibilityLabel={`Mark ${item.title} ${item.completed ? 'incomplete' : 'complete'}`} onPress={() => void toggle().catch(reportUpdateError)} style={({ pressed }) => [styles.checkTarget, pressed && styles.pressed]}>
         <View style={[styles.checkbox, item.completed && styles.checked]}>{item.completed ? <Feather name="check" size={18} color={colors.paper} /> : null}</View>
       </Pressable> : <View style={styles.checkTarget}><CategoryIcon category={item.category} /></View>}
       <Pressable accessibilityRole="button" onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} style={styles.main}>
         <Text numberOfLines={2} style={[styles.title, item.completed && styles.done]}>{item.title}</Text>
-        <Text style={styles.meta}>{categoryMeta[item.category].label}{showDate ? `  ·  ${item.dateLabel}${item.time ? `, ${item.time}` : ''}` : ''}</Text>
+        <Text style={styles.meta}>{categoryMeta[item.category].label}{showDate ? `  ·  ${itemWhenLabel(item)}` : ''}</Text>
       </Pressable>
       <Pressable accessibilityRole="button" accessibilityLabel={`${item.favorite ? 'Remove from favorites' : 'Add to favorites'}: ${item.title}`} accessibilityState={{ selected: Boolean(item.favorite) }} onPress={() => toggleFavorite(item.id)} style={({ pressed }) => [styles.star, pressed && styles.pressed]}>
         <Feather name="star" size={20} color={item.favorite ? colors.mustard : colors.secondary} fill={item.favorite ? colors.mustard : 'transparent'} />

@@ -10,6 +10,7 @@ import { ScreenHeader } from '@/components/ScreenHeader';
 import { colors, fonts, themedStyles } from '@/constants/theme';
 import { useItems } from '@/store/ItemsContext';
 import { Category } from '@/types';
+import { itemWhenLabel } from '@/utils/date';
 import { useTheme } from '@/store/ThemeContext';
 
 const categories: Category[] = ['task', 'reminder', 'idea', 'note'];
@@ -39,7 +40,7 @@ export default function ResultsScreen() {
               {expanded[category] && categoryItems.map((item) => (
                 <View key={item.id} style={styles.resultRow}>
                   {category === 'task' && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: Boolean(item.completed) }} accessibilityLabel={`Mark ${item.title} ${item.completed ? 'incomplete' : 'complete'}`} onPress={() => void toggleComplete(item.id).catch(reportUpdateError)} style={[styles.checkbox, item.completed && styles.checkboxDone]}>{item.completed && <Feather name="check" size={13} color={colors.surface} />}</Pressable>}
-                  <Pressable onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} style={styles.resultMain}><Text style={[styles.resultTitle, item.completed && styles.resultDone]}>{item.title}</Text><Text style={styles.resultMeta}>{item.dateLabel}</Text></Pressable>
+                  <Pressable onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} style={styles.resultMain}><Text style={[styles.resultTitle, item.completed && styles.resultDone]}>{item.title}</Text><Text style={styles.resultMeta}>{itemWhenLabel(item)}</Text></Pressable>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Change category for ${item.title}`} onPress={() => void changeCategory(item.id, categories[(categories.indexOf(item.category) + 1) % categories.length]).catch(reportUpdateError)} style={styles.rowAction}><Feather name="repeat" size={16} color={colors.secondary} /></Pressable>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Remind me about ${item.title} tomorrow at 9 AM`} onPress={() => void scheduleTomorrow(item.id).catch(reportUpdateError)} style={styles.rowAction}><Feather name="calendar" size={16} color={colors.secondary} /></Pressable>
                   <Pressable accessibilityLabel={`Delete ${item.title}`} onPress={() => deleteItem(item.id)} style={styles.rowAction}><Feather name="trash-2" size={16} color={colors.danger} /></Pressable>

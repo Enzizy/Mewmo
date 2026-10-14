@@ -2,6 +2,7 @@ import { AppDataSnapshot, OrganizedDump, PendingRecording } from '@/types';
 import * as FileSystem from 'expo-file-system/legacy';
 import { calculateFinancialForecast } from '@/features/wallet/financial-forecast';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
+import { availableCreditMinor, expiryStatus, nextDueDate, summarizeCards } from '@/features/wallet/cards';
 import { getOrganizerApiHeaders, getOrganizerApiUrl } from './organizerApi';
 import { loadSavedWeather } from './weather';
 import { hasNotificationPermission, isNotificationRuntimeAvailable } from './notifications';
@@ -87,6 +88,18 @@ async function assistantContext(data: AppDataSnapshot) {
       estimatedPortfolioValueMinor: wallet.portfolio,
       positions: wallet.positions,
     },
+    // Hand-tracked card balances, separate from the wallet ledger. Identified by name
+    // and last four digits only; no full card numbers exist in LifeDesk.
+    cards: {
+      note: 'Card balances are entered by the user and are separate from wallet.availableBalanceMinor; never add them together. Debit balanceMinor is money available on that card. Credit balanceMinor is the amount owed.',
+      totals: summarizeCards(data.cards),
+      list: data.cards.map((card) => ({
+        name: card.name, kind: card.kind, issuer: card.issuer, network: card.network, last4: card.last4,
+        balanceMinor: card.balanceMinor, balanceUpdatedAt: card.balanceUpdatedAt,
+        creditLimitMinor: card.creditLimitMinor, availableCreditMinor: availableCreditMinor(card),
+        nextPaymentDue: nextDueDate(card.dueDay)?.toDateString(), expiryStatus: expiryStatus(card),
+      })),
+    },
     forecast: {
       safeToSpendMinor: forecast.safeToSpendMinor,
       projectedBalanceMinor: forecast.projectedBalanceMinor,
@@ -101,7 +114,7 @@ async function assistantContext(data: AppDataSnapshot) {
     appCapabilities: {
       deviceNotifications: { available: isNotificationRuntimeAvailable(), permissionGranted: await hasNotificationPermission().catch(() => false) },
       calendar: 'Tasks and reminders can have dates, notifications, and daily, weekly, monthly, or yearly recurrence.',
-      finance: 'Wallet tracks cash, activity, BTC/VOO holdings, live or manual quotes, savings goals, budgets, salary/investment automations, subscriptions and recurring bills, pending financial reviews, and safe-to-spend forecasts.',
+      finance: 'Wallet tracks cash, activity, debit and credit card balances (entered by the user), BTC/VOO holdings, live or manual quotes, savings goals, budgets, salary/investment automations, subscriptions and recurring bills, pending financial reviews, and safe-to-spend forecasts.',
       capture: 'The assistant accepts typed questions and transcribed voice messages. It can propose tasks, reminders, notes, projects, income, expenses, and completed investment records. Proposals remain in Review until the user confirms or discards them. It cannot transfer real money or place trades.',
       tools: ['Weather forecast', 'Image conversion, compression, and resizing', 'PDF creation, merging, page extraction, and reordering', 'Currency conversion', 'Unit conversion', 'AR camera measurement'],
     },

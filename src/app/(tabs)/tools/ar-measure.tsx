@@ -122,7 +122,7 @@ function UnavailableScreen() {
     <Text style={styles.pageSupport}>Pin a start and end point to estimate a real-world length in centimeters, inches, or meters.</Text>
     <View style={styles.noticeCard}><Feather name={web ? 'smartphone' : 'download'} size={19} color={colors.accent} /><View style={styles.noticeCopy}><Text style={styles.noticeTitle}>{web ? 'Open this on Android' : 'Installed build required'}</Text><Text style={styles.noticeText}>{web ? 'AR measurement uses Android camera hardware and cannot run in a browser.' : 'Expo Go cannot load LifeDesk’s custom ARCore module. Install your next LifeDesk APK to use this tool.'}</Text></View></View>
     <HowItWorks />
-    <View style={styles.freeCard}><Feather name="shield" size={18} color={colors.green} /><Text style={styles.freeText}>Runs locally. No account, card, subscription, upload, or paid API is required.</Text></View>
+    <View style={styles.freeCard}><Feather name="shield" size={18} color={colors.green} /><Text style={styles.freeText}>Camera frames stay on your phone and are not uploaded.</Text></View>
   </AppScreen>;
 }
 

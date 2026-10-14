@@ -90,3 +90,16 @@ test('accepts a wallet starting point only when both halves are valid', () => {
   const bad = parseBackupArchive(archive({ transactions: [expense], walletSetup: { openingBalanceMinor: 250000, startsOn: 'January' } }));
   assert.equal(bad.archive.data.walletSetup, undefined);
 });
+
+test('restores cards and never keeps more than four card digits', () => {
+  const card = { id: 'card-1', kind: 'credit', name: 'BPI Visa', last4: '4821', balanceMinor: 1245000, creditLimitMinor: 5000000, dueDay: 28, color: 'ocean' };
+  const leaked = { id: 'card-2', kind: 'debit', name: 'Payroll', last4: '4111111111114821', balanceMinor: 0, dueDay: 12 };
+  const { archive: parsed } = parseBackupArchive(JSON.stringify({ version: 2, data: { cards: [card, leaked] } }));
+  assert.equal(parsed.data.cards.length, 2);
+  assert.equal(parsed.data.cards[0].last4, '4821');
+  assert.equal(parsed.data.cards[0].creditLimitMinor, 5000000);
+  assert.equal(parsed.data.cards[1].last4, undefined);
+  // A due day only means something on a credit card.
+  assert.equal(parsed.data.cards[1].dueDay, undefined);
+  assert.match(describeBackup(parsed.data), /2 card/);
+});

@@ -30,7 +30,7 @@ export default function SavingsGoalsScreen() {
   return (
     <AppScreen tabbed assistant={!editing} onRefresh={reload}>
       <ScreenHeader back />
-      <PageHeader title="Savings goals" supporting="Reserve part of your wallet for what matters without treating it as spent." action={<Pressable accessibilityRole="button" onPress={() => setEditing('new')} style={styles.add}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addText}>Add</Text></Pressable>} />
+      <PageHeader title="Savings goals" supporting="Reserve part of your wallet for what matters without treating it as spent." action={<Pressable accessibilityRole="button" onPress={() => setEditing('new')} style={styles.add}><Feather name="plus" size={17} color={colors.paper} /><Text style={styles.addText}>New goal</Text></Pressable>} />
       <View style={styles.summary}><Text style={styles.summaryLabel}>Reserved across active goals</Text><Text selectable style={styles.summaryValue}>{formatPeso(totalReserved)}</Text><Text style={styles.summaryNote}>Included as a reservation in safe-to-spend. Your available wallet stays unchanged.</Text></View>
 
       {editing ? <SavingsGoalForm key={editing === 'new' ? 'new' : editing.id} initialGoal={editing === 'new' ? undefined : editing} onDone={() => setEditing(null)} onCancel={() => setEditing(null)} /> : null}

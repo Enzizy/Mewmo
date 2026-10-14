@@ -210,6 +210,38 @@ export type HomePreferences = {
   shortcuts: HomeShortcutId[];
 };
 
+export type PaymentCardKind = 'debit' | 'credit';
+export type PaymentCardNetwork = 'visa' | 'mastercard' | 'amex' | 'jcb' | 'unionpay' | 'other';
+
+/**
+ * A card you own, tracked by hand. Only the last four digits are ever stored —
+ * never a full card number or security code. Card balances are separate from the
+ * wallet ledger, so they never change wallet cash or spending totals.
+ */
+export type PaymentCard = {
+  id: string;
+  kind: PaymentCardKind;
+  name: string;
+  issuer?: string;
+  network?: PaymentCardNetwork;
+  last4?: string;
+  expiryMonth?: number;
+  expiryYear?: number;
+  /** A key of CARD_COLORS. */
+  color: string;
+  /** Debit: money available on the card. Credit: the amount currently owed. */
+  balanceMinor: number;
+  balanceUpdatedAt: string;
+  creditLimitMinor?: number;
+  /** Day of the month the credit card payment is due, 1–31. */
+  dueDay?: number;
+  /** Day of the month the statement closes, 1–31. */
+  statementDay?: number;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type MonthlyBudget = {
   id: string;
   category: string;
@@ -249,6 +281,7 @@ export type AppDataSnapshot = {
   savingsGoals: SavingsGoal[];
   goalSuggestions: GoalContributionSuggestion[];
   reviewProposals: ReviewProposal[];
+  cards: PaymentCard[];
   homePreferences: HomePreferences;
   walletSetup?: WalletSetup;
   activity: ActivityEvent[];

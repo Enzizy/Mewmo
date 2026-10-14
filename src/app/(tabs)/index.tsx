@@ -1,8 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { Href, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { AppScreen } from '@/components/AppScreen';
+import { useAppDialog } from '@/components/AppDialog';
+import { useAppToast } from '@/components/AppToast';
 import { PixelCat } from '@/components/PixelCat';
 import { PageHeader } from '@/components/page-header';
 import { SectionHeading } from '@/components/section-heading';
@@ -10,6 +12,7 @@ import { colors, fonts, radius, themedStyles } from '@/constants/theme';
 import { USER_DISPLAY_NAME } from '@/constants/brand';
 import { getWalletSummary } from '@/features/wallet/wallet-summary';
 import { HOME_SHORTCUTS } from '@/features/home/home-preferences';
+import { ASSISTANT_STARTERS } from '@/features/assistant/starters';
 import { loadSavedWeather, WeatherSnapshot } from '@/services/weather';
 import { useItems } from '@/store/ItemsContext';
 import { HomeShortcutId, HomeWidgetId, ThoughtItem } from '@/types';
@@ -18,15 +21,20 @@ import { nextScheduledDate } from '@/utils/recurrence';
 import { localDateInput, upcomingReminders } from '@/utils/reminders';
 import { roundedTemperature, weatherIcon, weatherLabel } from '@/utils/weather';
 import { timeGreeting } from '@/utils/greeting';
+import { itemWhenLabel } from '@/utils/date';
 import { useTheme } from '@/store/ThemeContext';
 
 export default function HomeScreen() {
-  useTheme();
+  const { theme, setPreference } = useTheme();
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 1024;
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherLoaded, setWeatherLoaded] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const data = useItems();
+  const { showDialog } = useAppDialog();
+  const { showToast } = useAppToast();
   const { hydrated, items, projects, transactions, investments, quotes, recurringRules, walletSetup, financialOccurrences, reviewProposals, savingsGoals, goalSuggestions, homePreferences } = data;
   const money = useMemo(() => getWalletSummary({ transactions, investments, quotes, walletSetup }), [investments, quotes, transactions, walletSetup]);
   const heldPositions = useMemo(() => {
@@ -66,17 +74,25 @@ export default function HomeScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  const completeTask = async (item: ThoughtItem) => {
+    const reportError = (error: unknown) => showDialog({ title: 'Could not update task', message: error instanceof Error ? error.message : 'Try again.', tone: 'danger' });
+    try {
+      await data.toggleComplete(item.id);
+      showToast({ message: `Done: ${item.title}`, icon: 'check-circle', action: { label: 'Undo', onPress: () => data.toggleComplete(item.id).catch(reportError) } });
+    } catch (error) { reportError(error); }
+  };
+
   const compact = (id: HomeWidgetId) => homePreferences.compact.includes(id);
   const visibleWidgets = homePreferences.order.filter((id) => !homePreferences.hidden.includes(id));
   const widget = (id: HomeWidgetId) => {
-    if (id === 'review') return <Pressable key={id} accessibilityRole="button" onPress={() => router.push('/wallet/inbox' as Href)} style={({ pressed }) => [styles.weatherWidget, pressed && styles.pressed]}><View style={[styles.weatherIcon, pendingReviewCount > 0 && styles.reviewActive]}><Feather name="inbox" size={20} color={pendingReviewCount > 0 ? colors.paper : colors.ink} /></View><View style={styles.weatherMain}><Text style={styles.weatherLocation}>{pendingReviewCount ? `${pendingReviewCount} waiting for review` : 'Review inbox is clear'}</Text><Text style={styles.weatherCondition}>{pendingReviewCount ? 'Confirm scheduled money and AI suggestions.' : 'Nothing will change without your confirmation.'}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
-    if (id === 'weather') return <Pressable key={id} accessibilityRole="button" accessibilityLabel={weather ? `Open weather for ${weather.location.name}` : 'Choose a weather location'} onPress={() => router.push('/tools/weather' as Href)} style={({ pressed }) => [styles.weatherWidget, pressed && styles.pressed]}><View style={styles.weatherIcon}><Feather name={weather ? weatherIcon(weather.current.code, weather.current.isDay) : 'cloud'} size={21} color={colors.ink} /></View><View style={styles.weatherMain}>{weather ? <><Text numberOfLines={1} style={styles.weatherLocation}>{weather.location.name}</Text><Text numberOfLines={1} style={styles.weatherCondition}>{weatherLabel(weather.current.code)}{compact(id) ? '' : ` · H ${roundedTemperature(weather.days[0].high)} / L ${roundedTemperature(weather.days[0].low)}`}</Text></> : <><Text style={styles.weatherLocation}>{weatherLoaded ? 'Add your weather' : 'Loading weather…'}</Text><Text style={styles.weatherCondition}>{weatherLoaded ? 'Choose a city for your Home forecast.' : 'Checking your saved city.'}</Text></>}</View>{weather ? <Text style={styles.weatherTemp}>{roundedTemperature(weather.current.temperature)}</Text> : null}<Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
+    if (id === 'review') return <Pressable key={id} accessibilityRole="button" onPress={() => router.push('/wallet/inbox' as Href)} style={({ pressed }) => [styles.weatherWidget, isDesktop && styles.desktopWidgetReset, pressed && styles.pressed]}><View style={[styles.weatherIcon, pendingReviewCount > 0 && styles.reviewActive]}><Feather name="inbox" size={20} color={pendingReviewCount > 0 ? colors.paper : colors.ink} /></View><View style={styles.weatherMain}><Text style={styles.weatherLocation}>{pendingReviewCount ? `${pendingReviewCount} waiting for review` : 'Review inbox is clear'}</Text><Text style={styles.weatherCondition}>{pendingReviewCount ? 'Confirm scheduled money and AI suggestions.' : 'Nothing will change without your confirmation.'}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
+    if (id === 'weather') return <Pressable key={id} accessibilityRole="button" accessibilityLabel={weather ? `Open weather for ${weather.location.name}` : 'Choose a weather location'} onPress={() => router.push('/tools/weather' as Href)} style={({ pressed }) => [styles.weatherWidget, isDesktop && styles.desktopWidgetReset, pressed && styles.pressed]}><View style={styles.weatherIcon}><Feather name={weather ? weatherIcon(weather.current.code, weather.current.isDay) : 'cloud'} size={21} color={colors.ink} /></View><View style={styles.weatherMain}>{weather ? <><Text numberOfLines={1} style={styles.weatherLocation}>{weather.location.name}</Text><Text numberOfLines={1} style={styles.weatherCondition}>{weatherLabel(weather.current.code)}{compact(id) ? '' : ` · H ${roundedTemperature(weather.days[0].high)} / L ${roundedTemperature(weather.days[0].low)}`}</Text></> : <><Text style={styles.weatherLocation}>{weatherLoaded ? 'Add your weather' : 'Loading weather…'}</Text><Text style={styles.weatherCondition}>{weatherLoaded ? 'Choose a city for your Home forecast.' : 'Checking your saved city.'}</Text></>}</View>{weather ? <Text style={styles.weatherTemp}>{roundedTemperature(weather.current.temperature)}</Text> : null}<Feather name="chevron-right" size={17} color={colors.muted} /></Pressable>;
     if (id === 'money') {
       const visible = homePreferences.balancesVisible;
       const investmentDetail = heldPositions.length
         ? `${heldPositions.map((position) => position.asset).join(' + ')}${money.hasCompleteLivePortfolio ? ' · current value' : ' · some prices unavailable'}`
         : 'Add BTC or VOO holdings';
-      return <View key={id} style={styles.moneySurface}>
+      return <View key={id} style={[styles.moneySurface, isDesktop && styles.desktopWidgetReset]}>
         <Pressable accessibilityRole="button" accessibilityLabel="Open wallet overview" onPress={() => router.push('/wallet' as Href)} style={({ pressed }) => [styles.moneyHeader, pressed && styles.pressed]}><View><Text style={styles.moneyEyebrow}>YOUR MONEY</Text><Text style={styles.moneyLabel}>Tracked value</Text></View><View style={styles.openIcon}><Feather name="arrow-up-right" size={17} color={colors.ink} /></View></Pressable>
         <Text numberOfLines={1} adjustsFontSizeToFit style={styles.moneyTotal}>{visible ? formatPeso(money.balance + money.portfolio) : '••••••'}</Text>
         {!compact(id) ? <Text style={styles.moneyNote}>Wallet + investments. Savings stays inside your wallet.</Text> : null}
@@ -89,31 +105,97 @@ export default function HomeScreen() {
     }
     if (id === 'goals') return <View key={id} style={styles.section}><SectionHeading title="Savings goals" detail={activeGoals.length ? `${formatPeso(totalGoalReserved)} reserved` : 'No goals yet'} action={<Pressable accessibilityRole="button" onPress={() => router.push('/wallet/goals' as Href)} style={styles.textAction}><Text style={styles.textActionLabel}>Manage</Text></Pressable>} /><View style={styles.goalSurface}>{activeGoals.slice(0, compact(id) ? 1 : 2).map((goal) => <View key={goal.id} style={styles.goalItem}><View style={styles.goalTop}><Text numberOfLines={1} style={styles.goalTitle}>{goal.name}</Text><Text style={styles.goalPercent}>{Math.round(Math.min(goal.savedMinor / goal.targetMinor, 1) * 100)}%</Text></View><View style={styles.goalTrack}><View style={[styles.goalFill, { width: `${Math.min(goal.savedMinor / goal.targetMinor, 1) * 100}%` }]} /></View><Text style={styles.goalMeta}>{homePreferences.balancesVisible ? `${formatPeso(goal.savedMinor)} of ${formatPeso(goal.targetMinor)}` : 'Balance hidden'}</Text></View>)}{!activeGoals.length ? <View style={styles.simpleEmpty}><Text style={styles.emptyText}>Create a target and reserve money without recording an expense.</Text></View> : null}</View></View>;
     if (id === 'schedule') return <View key={id} style={styles.section}><SectionHeading title="Your schedule" detail={schedule.length ? 'Now and next' : 'Nothing coming up'} /><Pressable accessibilityRole="button" accessibilityLabel="Open reminder calendar" onPress={() => router.push('/tasks/calendar' as Href)} style={({ pressed }) => [styles.scheduleSurface, pressed && styles.pressed]}><View style={styles.scheduleDate}><Feather name="calendar" size={18} color={colors.ink} /><Text style={styles.scheduleDay}>{new Date().getDate()}</Text></View><View style={styles.scheduleMain}>{schedule.slice(0, compact(id) ? 1 : 2).map(({ item, date }, index) => <View key={item.id} style={[styles.scheduleItem, index > 0 && styles.scheduleItemBorder]}><View style={styles.scheduleCopy}><Text numberOfLines={1} style={styles.scheduleTitle}>{item.title}</Text><Text style={styles.scheduleMeta}>{formatReminderDate(date)}{item.recurrence ? ` · ${item.recurrence.frequency}` : ''}</Text></View><Feather name="chevron-right" size={17} color={colors.muted} /></View>)}{!schedule.length ? <View style={styles.scheduleItem}><View style={styles.scheduleCopy}><Text style={styles.scheduleTitle}>Your calendar is clear</Text><Text style={styles.scheduleMeta}>Tap to add a reminder.</Text></View><Feather name="plus" size={17} color={colors.muted} /></View> : null}</View></Pressable></View>;
-    if (id === 'attention') return <View key={id} style={styles.section}><SectionHeading title="Needs attention" detail={attention.length ? `${attention.length} due soon` : 'Nothing urgent'} action={<Pressable accessibilityRole="button" onPress={() => router.push('/tasks' as Href)} style={styles.textAction}><Text style={styles.textActionLabel}>View tasks</Text></Pressable>} /><View style={styles.list}>{attention.slice(0, compact(id) ? 1 : 3).map((item) => <AttentionRow key={item.id} item={item} onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} />)}{!attention.length ? <View style={styles.calmEmpty}><PixelCat pose="sleep" size={54} /><View style={styles.emptyCopy}><Text style={styles.emptyTitle}>You are clear for now</Text><Text style={styles.emptyText}>Urgent tasks will appear here.</Text></View></View> : null}</View></View>;
+    if (id === 'attention') return <View key={id} style={styles.section}><SectionHeading title="Needs attention" detail={attention.length ? `${attention.length} due soon` : 'Nothing urgent'} action={<Pressable accessibilityRole="button" onPress={() => router.push('/tasks' as Href)} style={styles.textAction}><Text style={styles.textActionLabel}>View tasks</Text></Pressable>} /><View style={styles.list}>{attention.slice(0, compact(id) ? 1 : 3).map((item) => <AttentionRow key={item.id} item={item} onComplete={() => void completeTask(item)} onPress={() => router.push({ pathname: '/item/[id]', params: { id: item.id } })} />)}{!attention.length ? <View style={styles.calmEmpty}><PixelCat pose="sleep" size={54} /><View style={styles.emptyCopy}><Text style={styles.emptyTitle}>You are clear for now</Text><Text style={styles.emptyText}>Urgent tasks will appear here.</Text></View></View> : null}</View></View>;
     if (id === 'coming-up') return <View key={id} style={styles.section}><SectionHeading title="Coming up" detail="Scheduled money and your next project step" /><View style={styles.list}>{upcomingMoney.slice(0, compact(id) ? 1 : 3).map(({ rule, date }) => <Pressable key={rule.id} onPress={() => router.push('/wallet/planning' as Href)} style={styles.row}><View style={styles.rowIcon}><Feather name={rule.kind === 'income' ? 'arrow-down-left' : rule.kind === 'investment' ? 'trending-up' : 'arrow-up-right'} size={17} color={colors.ink} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{rule.title}</Text><Text style={styles.rowMeta}>{formatDateKey(date)} · {homePreferences.balancesVisible ? formatPeso(rule.amountMinor) : 'Amount hidden'}</Text></View><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable>)}{activeProject && !compact(id) ? <Pressable onPress={() => router.push({ pathname: '/project/[id]', params: { id: activeProject.id } })} style={styles.row}><View style={styles.rowIcon}><Feather name="folder" size={17} color={colors.ink} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{activeProject.name}</Text><Text numberOfLines={1} style={styles.rowMeta}>{activeProject.nextAction || activeProject.currentFocus || 'Add a next action'}</Text></View><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable> : null}{!upcomingMoney.length && !activeProject ? <View style={styles.simpleEmpty}><Text style={styles.emptyText}>Scheduled salary, bills, investments, and project actions will appear here.</Text></View> : null}</View></View>;
     if (id === 'shortcuts') return <View key={id} style={styles.section}><SectionHeading title="Pinned actions" detail="Your frequent tools" /><View style={styles.shortcutGrid}>{homePreferences.shortcuts.map((shortcut) => <HomeShortcut key={shortcut} id={shortcut} onPress={() => router.push(shortcutHref(shortcut))} />)}{!homePreferences.shortcuts.length ? <View style={styles.simpleEmpty}><Text style={styles.emptyText}>Choose up to four actions in Customize Home.</Text></View> : null}</View></View>;
     return null;
   };
 
-  return <AppScreen assistant onRefresh={data.reload}>
-    <PageHeader layout="stacked" eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)} title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`} supporting="Here is what deserves your attention today." action={<View style={styles.headerActions}><Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable><Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable></View>} />
-    {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : visibleWidgets.map(widget)}
+  const hasUsefulContent = (id: HomeWidgetId) => {
+    if (id === 'money') return true;
+    if (id === 'review') return pendingReviewCount > 0;
+    if (id === 'weather') return Boolean(weather);
+    if (id === 'shortcuts') return homePreferences.shortcuts.length > 0;
+    if (id === 'goals') return activeGoals.length > 0;
+    if (id === 'schedule') return schedule.length > 0;
+    if (id === 'attention') return attention.length > 0;
+    if (id === 'coming-up') return upcomingMoney.length > 0 || Boolean(activeProject);
+    return true;
+  };
+  const usefulWidgets = visibleWidgets.filter(hasUsefulContent);
+  const utilityWidgets = usefulWidgets.filter((id) => id === 'review' || id === 'weather');
+  const dashboardWidgets = usefulWidgets.filter((id) => id !== 'money' && id !== 'review' && id !== 'weather' && id !== 'shortcuts');
+  const showsMoney = visibleWidgets.includes('money');
+  const showsShortcuts = visibleWidgets.includes('shortcuts') && homePreferences.shortcuts.length > 0;
+
+  return <AppScreen assistant layout={isDesktop ? 'wide' : 'standard'} onRefresh={data.reload}>
+    <PageHeader
+      layout="stacked"
+      eyebrow={new Intl.DateTimeFormat('en-PH', { weekday: 'long', month: 'long', day: 'numeric' }).format(now)}
+      title={`${timeGreeting(now)}, ${USER_DISPLAY_NAME}`}
+      supporting={isDesktop ? 'Your money, schedule, and priorities in one calm workspace.' : 'Here is what deserves your attention today.'}
+      action={<View style={styles.headerActions}>
+        {isDesktop ? <Pressable accessibilityLabel={`Use ${theme === 'dark' ? 'light' : 'dark'} theme`} onPress={() => setPreference(theme === 'dark' ? 'light' : 'dark')} style={styles.profileButton}><Feather name={theme === 'dark' ? 'sun' : 'moon'} size={19} color={colors.ink} /></Pressable> : null}
+        <Pressable accessibilityLabel="Customize Home" onPress={() => router.push('/home-customize' as Href)} style={styles.profileButton}><Feather name="sliders" size={19} color={colors.ink} /></Pressable>
+        <Pressable accessibilityLabel="Open profile and settings" onPress={() => router.push('/profile')} style={styles.profileButton}><Feather name="user" size={20} color={colors.ink} /></Pressable>
+      </View>}
+    />
+    {!hydrated ? <View style={styles.loading}><ActivityIndicator color={colors.ink} /><Text style={styles.loadingText}>Opening your local records…</Text></View> : isDesktop ? <>
+      <View style={styles.desktopHeroGrid}>
+        {showsMoney ? <View style={styles.desktopMoneyColumn}>{widget('money')}</View> : null}
+        <DesktopAssistantCard onOpen={() => router.push('/capture')} onVoice={() => router.push('/record')} onStarter={(prompt) => router.push({ pathname: '/capture', params: { prompt } })} />
+      </View>
+      {showsShortcuts ? <View style={styles.desktopQuickActions}>
+        <View style={styles.desktopQuickHeader}><View><Text style={styles.desktopQuickTitle}>Quick actions</Text><Text style={styles.desktopQuickDetail}>Jump straight into the things you do most.</Text></View><Pressable accessibilityRole="button" onPress={() => router.push('/home-customize' as Href)} style={styles.desktopQuickEdit}><Feather name="edit-3" size={14} color={colors.secondary} /><Text style={styles.desktopQuickEditText}>Edit</Text></Pressable></View>
+        <View style={styles.desktopQuickGrid}>{homePreferences.shortcuts.map((shortcut) => <HomeShortcut key={shortcut} id={shortcut} desktop onPress={() => router.push(shortcutHref(shortcut))} />)}</View>
+      </View> : null}
+      {utilityWidgets.length ? <View style={styles.desktopUtilityGrid}>{utilityWidgets.map((id) => <View key={id} style={styles.desktopUtilityItem}>{widget(id)}</View>)}</View> : null}
+      {dashboardWidgets.length ? <View style={styles.desktopDashboardGrid}>{dashboardWidgets.map((id) => <View key={id} style={styles.desktopPanel}>{widget(id)}</View>)}</View> : null}
+    </> : <><AskBar onOpen={() => router.push({ pathname: '/chat', params: { focus: '1' } })} onVoice={() => router.push('/record')} onStarter={(prompt) => router.push({ pathname: '/chat', params: { prompt } })} />{usefulWidgets.length ? usefulWidgets.map(widget) : <Pressable accessibilityRole="button" onPress={() => router.push('/home-customize' as Href)} style={styles.emptyHome}>
+      <View style={styles.emptyHomeIcon}><Feather name="check" size={20} color={colors.green} /></View>
+      <View style={styles.emptyHomeCopy}><Text style={styles.emptyHomeTitle}>Your Home is clear</Text><Text style={styles.emptyHomeText}>Enable a widget or pin an action to build your dashboard.</Text></View>
+      <Feather name="sliders" size={18} color={colors.muted} />
+    </Pressable>}</>}
   </AppScreen>;
+}
+
+function DesktopAssistantCard({ onOpen, onVoice, onStarter }: { onOpen: () => void; onVoice: () => void; onStarter: (prompt: string) => void }) {
+  return <View style={styles.assistantCard}>
+    <View style={styles.assistantTop}><View style={styles.assistantBadge}><Feather name="zap" size={17} color={colors.ink} /></View><Text style={styles.assistantEyebrow}>AI ASSISTANT</Text><Pressable accessibilityRole="button" accessibilityLabel="Open assistant" onPress={onOpen} style={styles.openIcon}><Feather name="arrow-up-right" size={17} color={colors.ink} /></Pressable></View>
+    <View style={styles.assistantOrb}><Feather name="message-circle" size={30} color={colors.paper} /></View>
+    <Text style={styles.assistantTitle}>What can I help with?</Text>
+    <Text style={styles.assistantBody}>Ask a question, plan your day, log money, or create a reminder.</Text>
+    <View style={styles.assistantPrompts}>{ASSISTANT_STARTERS.slice(0, 3).map((starter) => <Pressable accessibilityRole="button" key={starter.label} onPress={() => onStarter(starter.prompt)} style={({ pressed }) => [styles.assistantPrompt, pressed && styles.pressed]}><Feather name={starter.icon} size={12} color={colors.secondary} /><Text style={styles.assistantPromptText}>{starter.label}</Text></Pressable>)}</View>
+    <View style={styles.assistantActions}><Pressable accessibilityRole="button" onPress={onOpen} style={({ pressed }) => [styles.assistantAsk, pressed && styles.pressed]}><Text style={styles.assistantAskText}>Ask anything</Text><Feather name="arrow-right" size={17} color={colors.paper} /></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Start a voice conversation" onPress={onVoice} style={({ pressed }) => [styles.assistantVoice, pressed && styles.pressed]}><Feather name="mic" size={18} color={colors.ink} /></Pressable></View>
+  </View>;
 }
 
 function AccountRow({ icon, iconTone, label, detail, value, onPress, last = false }: { icon: keyof typeof Feather.glyphMap; iconTone: 'blue' | 'green' | 'dark'; label: string; detail: string; value: string; onPress: () => void; last?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={`Open ${label}`} onPress={onPress} style={({ pressed }) => [styles.accountRow, last && styles.accountRowLast, pressed && styles.pressed]}><View style={[styles.accountIcon, iconTone === 'green' && styles.accountIconGreen, iconTone === 'dark' && styles.accountIconDark]}><Feather name={icon} size={17} color={iconTone === 'dark' ? colors.paper : iconTone === 'green' ? colors.green : colors.accent} /></View><View style={styles.accountMain}><Text style={styles.accountLabel}>{label}</Text><Text numberOfLines={1} style={styles.accountDetail}>{detail}</Text></View><Text numberOfLines={1} adjustsFontSizeToFit style={styles.accountValue}>{value}</Text><Feather name="chevron-right" size={16} color={colors.muted} /></Pressable>;
 }
 
-function AttentionRow({ item, onPress }: { item: ThoughtItem; onPress: () => void }) {
-  return <Pressable accessibilityRole="button" onPress={onPress} style={styles.row}><View style={[styles.rowIcon, item.category === 'reminder' && styles.reminderIcon]}><Feather name={item.category === 'reminder' ? 'bell' : 'check'} size={17} color={colors.ink} /></View><View style={styles.rowMain}><Text numberOfLines={2} style={styles.rowTitle}>{item.title}</Text><Text style={styles.rowMeta}>{item.dateLabel}{item.time ? ` · ${item.time}` : ''}</Text></View><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable>;
+function AttentionRow({ item, onPress, onComplete }: { item: ThoughtItem; onPress: () => void; onComplete: () => void }) {
+  const overdue = Boolean(item.dueAt && Date.parse(item.dueAt) < Date.now());
+  return <View style={styles.row}><Pressable accessibilityRole="checkbox" accessibilityState={{ checked: false }} accessibilityLabel={`Mark ${item.title} complete`} hitSlop={6} onPress={onComplete} style={({ pressed }) => [styles.checkTarget, pressed && styles.pressed]}><View style={styles.checkbox} /></Pressable><Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.rowPress, pressed && styles.pressed]}><View style={styles.rowMain}><Text numberOfLines={2} style={styles.rowTitle}>{item.title}</Text><Text style={[styles.rowMeta, overdue && styles.overdue]}>{overdue ? 'Overdue · ' : ''}{itemWhenLabel(item)}</Text></View><Feather name="chevron-right" size={18} color={colors.muted} /></Pressable></View>;
+}
+
+function AskBar({ onOpen, onVoice, onStarter }: { onOpen: () => void; onVoice: () => void; onStarter: (prompt: string) => void }) {
+  return <View style={styles.ask}>
+    <View style={styles.askBar}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Ask LifeDesk anything" onPress={onOpen} style={({ pressed }) => [styles.askField, pressed && styles.pressed]}><View style={styles.askAvatar}><PixelCat pose="idle" size={26} still /></View><Text numberOfLines={1} style={styles.askPlaceholder}>Ask or tell LifeDesk anything…</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Talk to LifeDesk" onPress={onVoice} style={({ pressed }) => [styles.askMic, pressed && styles.pressed]}><Feather name="mic" size={19} color={colors.paper} /></Pressable>
+    </View>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.askStarters} style={styles.askStarterScroll}>
+      {ASSISTANT_STARTERS.slice(0, 3).map((starter) => <Pressable accessibilityRole="button" key={starter.label} onPress={() => onStarter(starter.prompt)} style={({ pressed }) => [styles.askStarter, pressed && styles.pressed]}><Feather name={starter.icon} size={13} color={colors.secondary} /><Text style={styles.askStarterText}>{starter.label}</Text></Pressable>)}
+    </ScrollView>
+  </View>;
 }
 
 const shortcutIcons: Record<HomeShortcutId, keyof typeof Feather.glyphMap> = { 'add-income': 'arrow-down-left', 'add-expense': 'arrow-up-right', 'add-investment': 'trending-up', 'add-reminder': 'calendar', currency: 'refresh-cw', 'image-tools': 'image', 'pdf-tools': 'file-text', weather: 'cloud' };
 
-function HomeShortcut({ id, onPress }: { id: HomeShortcutId; onPress: () => void }) {
+function HomeShortcut({ id, onPress, desktop = false }: { id: HomeShortcutId; onPress: () => void; desktop?: boolean }) {
   const title = HOME_SHORTCUTS.find((shortcut) => shortcut.id === id)?.title ?? id;
-  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}><View style={styles.shortcutIcon}><Feather name={shortcutIcons[id]} size={18} color={colors.ink} /></View><Text style={styles.shortcutTitle}>{title}</Text><Feather name="chevron-right" size={16} color={colors.muted} /></Pressable>;
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.shortcut, desktop && styles.desktopShortcut, pressed && styles.pressed]}><View style={styles.shortcutIcon}><Feather name={shortcutIcons[id]} size={18} color={colors.ink} /></View><Text style={styles.shortcutTitle}>{title}</Text><Feather name="chevron-right" size={16} color={colors.muted} /></Pressable>;
 }
 
 function shortcutHref(id: HomeShortcutId): Href {
@@ -196,8 +278,21 @@ const styles = themedStyles(() => ({
   list: { marginTop: 12, borderTopWidth: 1, borderTopColor: colors.border },
   row: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
   rowIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
-  reminderIcon: { backgroundColor: colors.accentSoft },
   rowMain: { flex: 1, minWidth: 0 },
+  rowPress: { flex: 1, minWidth: 0, minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  checkTarget: { width: 36, height: 44, alignItems: 'center', justifyContent: 'center' },
+  checkbox: { width: 22, height: 22, borderRadius: 7, borderWidth: 2, borderColor: colors.borderStrong },
+  overdue: { color: colors.danger },
+  ask: { marginTop: 18 },
+  askBar: { minHeight: 58, padding: 6, paddingLeft: 8, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 29, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  askField: { flex: 1, minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  askAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', backgroundColor: colors.background },
+  askPlaceholder: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.muted },
+  askMic: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
+  askStarterScroll: { marginTop: 10, marginHorizontal: -22 },
+  askStarters: { paddingHorizontal: 22, gap: 7 },
+  askStarter: { minHeight: 36, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  askStarterText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.ink },
   rowTitle: { fontFamily: fonts.bodyMedium, fontSize: 14, lineHeight: 20, color: colors.ink },
   rowMeta: { marginTop: 3, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
   calmEmpty: { minHeight: 104, flexDirection: 'row', alignItems: 'center', gap: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -206,8 +301,42 @@ const styles = themedStyles(() => ({
   shortcut: { width: '48%', minHeight: 64, flexGrow: 1, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   shortcutIcon: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background },
   shortcutTitle: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 13, lineHeight: 18, color: colors.ink },
+  emptyHome: { minHeight: 82, marginTop: 20, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  emptyHomeIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.greenSoft },
+  emptyHomeCopy: { flex: 1, minWidth: 0 },
+  emptyHomeTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink },
+  emptyHomeText: { marginTop: 3, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
   emptyCopy: { flex: 1 },
   emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.ink },
   emptyText: { marginTop: 3, fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.secondary },
+  desktopHeroGrid: { marginTop: 26, flexDirection: 'row', alignItems: 'stretch', gap: 16 },
+  desktopMoneyColumn: { flex: 1.45, minWidth: 0 },
+  desktopWidgetReset: { marginTop: 0 },
+  assistantCard: { flex: 1, minWidth: 340, minHeight: 330, padding: 20, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  assistantTop: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  assistantBadge: { width: 32, height: 32, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentSoft },
+  assistantEyebrow: { flex: 1, fontFamily: fonts.bodySemiBold, fontSize: 11, letterSpacing: 0.8, color: colors.secondary },
+  assistantOrb: { width: 62, height: 62, marginTop: 18, borderRadius: 31, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.ink },
+  assistantTitle: { marginTop: 13, textAlign: 'center', fontFamily: fonts.bodySemiBold, fontSize: 18, lineHeight: 23, letterSpacing: -0.2, color: colors.ink },
+  assistantBody: { marginTop: 5, paddingHorizontal: 12, textAlign: 'center', fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary },
+  assistantPrompts: { marginTop: 14, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 6 },
+  assistantPrompt: { minHeight: 32, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: radius.full, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background },
+  assistantPromptText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.ink },
+  assistantActions: { marginTop: 16, flexDirection: 'row', gap: 8 },
+  assistantAsk: { flex: 1, minHeight: 46, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 12, backgroundColor: colors.ink },
+  assistantAskText: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.paper },
+  assistantVoice: { width: 46, height: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.background },
+  desktopQuickActions: { marginTop: 16, padding: 18, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  desktopQuickHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16 },
+  desktopQuickTitle: { fontFamily: fonts.bodySemiBold, fontSize: 16, lineHeight: 21, color: colors.ink },
+  desktopQuickDetail: { marginTop: 2, fontFamily: fonts.body, fontSize: 12, lineHeight: 17, color: colors.secondary },
+  desktopQuickEdit: { minHeight: 38, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10 },
+  desktopQuickEditText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.secondary },
+  desktopQuickGrid: { marginTop: 13, flexDirection: 'row', gap: 9 },
+  desktopShortcut: { width: 'auto', minWidth: 0, minHeight: 54, flex: 1, flexGrow: 1 },
+  desktopUtilityGrid: { marginTop: 16, flexDirection: 'row', gap: 16 },
+  desktopUtilityItem: { flex: 1, minWidth: 0 },
+  desktopDashboardGrid: { marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', gap: 16 },
+  desktopPanel: { width: '48%', minWidth: 380, flexGrow: 1, paddingHorizontal: 20, paddingBottom: 20, overflow: 'hidden', borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
   pressed: { opacity: 0.72 },
 }));

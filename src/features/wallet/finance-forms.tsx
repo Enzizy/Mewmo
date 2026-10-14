@@ -299,7 +299,7 @@ export function SavingsGoalForm({ initialGoal, onDone, onCancel }: { initialGoal
   );
 }
 
-function FormCard({ title, description, onClose, children }: PropsWithChildren<{ title: string; description: string; onClose: () => void }>) {
+export function FormCard({ title, description, onClose, children }: PropsWithChildren<{ title: string; description: string; onClose: () => void }>) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -311,11 +311,11 @@ function FormCard({ title, description, onClose, children }: PropsWithChildren<{
   );
 }
 
-function ChoiceGroup<T extends string>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (value: T) => void }) {
+export function ChoiceGroup<T extends string>({ label, options, value, onChange }: { label: string; options: { value: T; label: string }[]; value: T; onChange: (value: T) => void }) {
   return <View><Text style={styles.label}>{label}</Text><View style={styles.choices}>{options.map((option) => <Pressable accessibilityRole="button" accessibilityState={{ selected: option.value === value }} key={option.value} onPress={() => onChange(option.value)} style={({ pressed }) => [styles.choice, option.value === value && styles.choiceSelected, pressed && styles.pressed]}><Text style={[styles.choiceText, option.value === value && styles.choiceTextSelected]}>{option.label}</Text></Pressable>)}</View></View>;
 }
 
-function Field({ label, hint, prefix, ...inputProps }: { label: string; hint?: string; prefix?: string } & React.ComponentProps<typeof TextInput>) {
+export function Field({ label, hint, prefix, ...inputProps }: { label: string; hint?: string; prefix?: string } & React.ComponentProps<typeof TextInput>) {
   const readOnly = inputProps.editable === false;
   return <View><View style={styles.fieldHeader}><Text style={styles.label}>{label}</Text>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View><View style={[styles.inputShell, readOnly && styles.inputShellReadOnly]}>{prefix ? <Text style={styles.prefix}>{prefix}</Text> : null}<TextInput placeholderTextColor={colors.muted} style={[styles.input, readOnly && styles.inputReadOnly]} {...inputProps} accessibilityLabel={inputProps.accessibilityLabel ?? label} /></View></View>;
 }
@@ -351,7 +351,7 @@ function QuantityField({ label, hint, value, onChangeText, placeholder }: { labe
   );
 }
 
-function SubmitButton({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
+export function SubmitButton({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress} style={({ pressed }) => [styles.submit, disabled && styles.disabled, pressed && !disabled && styles.submitPressed]}><Text style={styles.submitText}>{label}</Text><Feather name="arrow-right" size={18} color={colors.paper} /></Pressable>;
 }
 

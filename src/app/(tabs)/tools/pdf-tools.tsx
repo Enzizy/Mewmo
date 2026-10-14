@@ -74,7 +74,7 @@ export default function PdfToolsScreen() {
 
       {!busy && result ? <View style={styles.result}><View style={styles.resultIcon}><Feather name="check" size={23} color={colors.paper} /></View><View style={styles.main}><Text style={styles.resultTitle}>PDF ready</Text><Text numberOfLines={1} style={styles.resultName}>{result.name}</Text><Text style={styles.resultMeta}>{result.pageCount} {result.pageCount === 1 ? 'page' : 'pages'} · {formatBytes(result.size)}</Text></View><Pressable accessibilityRole="button" onPress={save} style={({ pressed }) => [styles.save, pressed && styles.pressed]}><Feather name="share-2" size={17} color={colors.paper} /><Text style={styles.saveText}>Save</Text></Pressable></View> : null}
 
-      <Text style={styles.limit}>Encrypted or password-protected PDFs are not supported. The current on-device limit is 40 MB per selection and 500 output pages. PDF compression, signing, and OCR are not included because this version does not upload files or pretend to compress content losslessly.</Text>
+      <Text style={styles.limit}>Limits: 40 MB per selection and 500 output pages. Password-protected PDFs are not supported. Compression, signing, and text recognition are not available yet.</Text>
     </AppScreen>
   );
 }

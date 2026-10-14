@@ -17,6 +17,7 @@ import {
 import { ItemsProvider, useItems } from '@/store/ItemsContext';
 import { ThemeProvider, useTheme } from '@/store/ThemeContext';
 import { AppDialogProvider } from '@/components/AppDialog';
+import { AppToastProvider } from '@/components/AppToast';
 import { LifeDeskNativeSync } from '@/components/LifeDeskNativeSync';
 import { colors } from '@/constants/theme';
 import { configureNotifications, scheduleSnoozeNotification, subscribeToNotificationResponses } from '@/services/notifications';
@@ -48,16 +49,18 @@ function ThemedRoot() {
           <LifeDeskNativeSync />
           <NotificationBridge />
           <AppDialogProvider>
-            <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
-            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
-              <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
-              <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
-              <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
-              <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
-              <Stack.Screen name="home-customize" options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="results" options={{ animation: 'fade' }} />
-              <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
-            </Stack>
+            <AppToastProvider>
+              <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background }, animation: 'fade' }}>
+                <Stack.Screen name="(tabs)" options={{ animation: 'none' }} />
+                <Stack.Screen name="record" options={{ animation: 'fade_from_bottom', gestureEnabled: false }} />
+                <Stack.Screen name="processing" options={{ animation: 'fade', gestureEnabled: false }} />
+                <Stack.Screen name="review" options={{ animation: 'fade_from_bottom' }} />
+                <Stack.Screen name="home-customize" options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="results" options={{ animation: 'fade' }} />
+                <Stack.Screen name="chat" options={{ animation: 'fade_from_bottom' }} />
+              </Stack>
+            </AppToastProvider>
           </AppDialogProvider>
         </ItemsProvider>
       </SafeAreaProvider>

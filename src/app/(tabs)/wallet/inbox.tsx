@@ -24,6 +24,7 @@ export default function ReviewInboxScreen() {
   const data = useItems();
   const pending = data.financialOccurrences.filter((item) => item.status === 'pending');
   const goalSuggestions = data.goalSuggestions.filter((item) => item.status === 'pending');
+  const hasPending = pending.length > 0 || data.reviewProposals.length > 0 || goalSuggestions.length > 0;
   const [selected, setSelected] = useState<FinancialOccurrence | null>(null);
 
   const resolveGoal = async (id: string, status: 'confirmed' | 'skipped') => {
@@ -36,39 +37,36 @@ export default function ReviewInboxScreen() {
       <ScreenHeader back />
       <PageHeader title="Review inbox" supporting="Nothing changes your wallet, investments, goals, or calendar until you confirm it." />
 
-      <View style={styles.summary}>
+      {hasPending ? <View style={styles.summary}>
         <ReviewMetric value={pending.length} label="Money" />
         <View style={styles.divider} />
-        <ReviewMetric value={data.reviewProposals.length} label="AI proposals" />
+        <ReviewMetric value={data.reviewProposals.length} label="Assistant" />
         <View style={styles.divider} />
-        <ReviewMetric value={goalSuggestions.length} label="Goal suggestions" />
-      </View>
+        <ReviewMetric value={goalSuggestions.length} label="Goals" />
+      </View> : <View style={styles.allClear}><View style={styles.allClearIcon}><Feather name="check" size={23} color={colors.green} /></View><Text style={styles.allClearTitle}>All caught up</Text><Text style={styles.allClearDetail}>Scheduled money, Assistant suggestions, and savings reservations will appear here when they need your approval.</Text></View>}
 
       {selected ? <OccurrenceForm key={selected.id} occurrence={selected} data={data} onDone={() => setSelected(null)} onCancel={() => setSelected(null)} /> : null}
 
-      <View style={styles.section}>
+      {pending.length ? <View style={styles.section}>
         <SectionHeading title="Scheduled money" detail={pending.length ? `${pending.length} waiting for you` : 'All caught up'} />
         <View style={styles.list}>
           {pending.map((item) => <Pressable accessibilityRole="button" key={item.id} onPress={() => setSelected(item)} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>{item.asset ? <InvestmentMark asset={item.asset} size={38} /> : <View style={[styles.icon, item.kind === 'income' && styles.incomeIcon]}><Feather name={item.kind === 'income' ? 'arrow-down-left' : 'arrow-up-right'} size={18} color={colors.ink} /></View>}<View style={styles.main}><View style={styles.titleLine}><Text numberOfLines={1} style={styles.rowTitle}>{item.title}</Text>{item.dueDate < localDateKey(new Date()) ? <Text style={styles.overdue}>OVERDUE</Text> : null}</View><Text style={styles.meta}>Expected {formatDate(item.scheduledDate)} · {formatPeso(item.plannedAmountMinor)}</Text><Text style={styles.status}>Tap to enter what actually happened</Text></View><Feather name="chevron-right" size={19} color={colors.muted} /></Pressable>)}
-          {!pending.length ? <Empty icon="check-circle" title="No money waiting" detail="Due salary, bills, subscriptions, and investment plans will appear here for confirmation." /> : null}
         </View>
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
-        <SectionHeading title="AI proposals" detail="Changes waiting for your approval" />
+      {data.reviewProposals.length ? <View style={styles.section}>
+        <SectionHeading title="Assistant suggestions" detail="Changes waiting for your approval" />
         <View style={styles.list}>
           {data.reviewProposals.map((proposal) => <Pressable accessibilityRole="button" key={proposal.id} onPress={() => router.push({ pathname: '/review', params: { id: proposal.id } })} style={({ pressed }) => [styles.row, pressed && styles.pressed]}><View style={styles.icon}><Feather name={proposalSourceIcon(proposal.source)} size={18} color={colors.ink} /></View><View style={styles.main}><Text numberOfLines={1} style={styles.rowTitle}>{proposal.organized.title}</Text><Text style={styles.meta}>{proposal.organized.items.length} suggested {proposal.organized.items.length === 1 ? 'change' : 'changes'} · {proposalSourceLabel(proposal.source)}</Text></View><Feather name="chevron-right" size={19} color={colors.muted} /></Pressable>)}
-          {!data.reviewProposals.length ? <Empty icon="message-square" title="No AI proposals" detail="Any supported action that could change your records waits here until reviewed." /> : null}
         </View>
-      </View>
+      </View> : null}
 
-      <View style={styles.section}>
+      {goalSuggestions.length ? <View style={styles.section}>
         <SectionHeading title="Payday goal suggestions" detail="These reserve money; they are never expenses" />
         <View style={styles.list}>
           {goalSuggestions.map((suggestion) => { const goal = data.savingsGoals.find((candidate) => candidate.id === suggestion.goalId); if (!goal) return null; return <View key={suggestion.id} style={styles.goalRow}><View style={styles.icon}><Feather name="target" size={18} color={colors.ink} /></View><View style={styles.main}><Text style={styles.rowTitle}>Reserve for {goal.name}</Text><Text style={styles.meta}>{formatPeso(suggestion.amountMinor)} from confirmed payday income</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`Skip ${goal.name} suggestion`} onPress={() => resolveGoal(suggestion.id, 'skipped')} style={styles.smallButton}><Feather name="x" size={17} color={colors.secondary} /></Pressable><Pressable accessibilityRole="button" onPress={() => resolveGoal(suggestion.id, 'confirmed')} style={styles.confirmSmall}><Text style={styles.confirmSmallText}>Reserve</Text></Pressable></View>; })}
-          {!goalSuggestions.length ? <Empty icon="target" title="No goal suggestions" detail="If a goal has a payday amount, a suggestion appears after you confirm income." /> : null}
         </View>
-      </View>
+      </View> : null}
     </AppScreen>
   );
 }
@@ -79,8 +77,8 @@ function proposalSourceIcon(source: ReviewProposal['source']): keyof typeof Feat
 }
 
 function proposalSourceLabel(source: ReviewProposal['source']) {
-  if (source === 'voice') return 'Voice Capture';
-  return 'Ask My Cat';
+  if (source === 'voice') return 'Voice note';
+  return 'Assistant chat';
 }
 
 function OccurrenceForm({ occurrence, data, onDone, onCancel }: { occurrence: FinancialOccurrence; data: ReturnType<typeof useItems>; onDone: () => void; onCancel: () => void }) {
@@ -137,12 +135,15 @@ function OccurrenceForm({ occurrence, data, onDone, onCancel }: { occurrence: Fi
 
 function ReviewMetric({ value, label }: { value: number; label: string }) { return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>; }
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) { return <View style={styles.field}><View style={styles.fieldHead}><Text style={styles.label}>{label}</Text>{hint ? <Text style={styles.hint}>{hint}</Text> : null}</View>{children}</View>; }
-function Empty({ icon, title, detail }: { icon: keyof typeof Feather.glyphMap; title: string; detail: string }) { return <View style={styles.empty}><View style={styles.icon}><Feather name={icon} size={19} color={colors.muted} /></View><View style={styles.main}><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyDetail}>{detail}</Text></View></View>; }
 function formatDate(value: string) { return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${value}T00:00:00Z`)); }
 
 const styles = themedStyles(() => ({
   summary: { marginTop: 20, padding: 16, flexDirection: 'row', borderRadius: radius.lg, backgroundColor: colors.ink }, metric: { flex: 1, alignItems: 'center' }, metricValue: { fontFamily: fonts.bodyBold, fontSize: 24, fontVariant: ['tabular-nums'], color: colors.paper }, metricLabel: { marginTop: 3, textAlign: 'center', fontFamily: fonts.body, fontSize: 10, lineHeight: 14, color: colors.onInkMuted }, divider: { width: 1, backgroundColor: colors.onInkBorder },
+  allClear: { marginTop: 22, padding: 23, alignItems: 'center', borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper },
+  allClearIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.greenSoft },
+  allClearTitle: { marginTop: 12, fontFamily: fonts.bodyBold, fontSize: 19, color: colors.ink },
+  allClearDetail: { marginTop: 5, textAlign: 'center', fontFamily: fonts.body, fontSize: 13, lineHeight: 19, color: colors.secondary },
   section: { marginTop: 32 }, list: { marginTop: 11, borderTopWidth: 1, borderTopColor: colors.border }, row: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: 1, borderBottomColor: colors.border }, goalRow: { minHeight: 84, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: 1, borderBottomColor: colors.border }, icon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border, backgroundColor: colors.paper }, incomeIcon: { backgroundColor: colors.greenSoft }, main: { flex: 1, minWidth: 0 }, titleLine: { flexDirection: 'row', alignItems: 'center', gap: 7 }, rowTitle: { flexShrink: 1, fontFamily: fonts.bodySemiBold, fontSize: 14, lineHeight: 19, color: colors.ink }, meta: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary }, status: { marginTop: 3, fontFamily: fonts.bodySemiBold, fontSize: 10, color: colors.accent }, overdue: { paddingHorizontal: 6, paddingVertical: 3, borderRadius: 4, overflow: 'hidden', fontFamily: fonts.bodyBold, fontSize: 8, color: colors.danger, backgroundColor: colors.dangerSoft }, pressed: { opacity: 0.7 },
-  smallButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, confirmSmall: { minHeight: 42, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.ink }, confirmSmallText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.paper }, empty: { minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border }, emptyTitle: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.ink }, emptyDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.secondary },
+  smallButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, confirmSmall: { minHeight: 42, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: colors.ink }, confirmSmallText: { fontFamily: fonts.bodySemiBold, fontSize: 11, color: colors.paper },
   form: { marginTop: 20, padding: 18, gap: 16, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.paper }, formHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, formTitle: { fontFamily: fonts.bodyBold, fontSize: 20, lineHeight: 25, color: colors.ink }, formDetail: { marginTop: 5, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, color: colors.secondary }, field: { gap: 7 }, fieldHead: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 10 }, label: { fontFamily: fonts.bodySemiBold, fontSize: 12, lineHeight: 16, color: colors.ink }, hint: { flex: 1, textAlign: 'right', fontFamily: fonts.body, fontSize: 10, color: colors.muted }, inputShell: { minHeight: 50, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: radius.sm, borderWidth: 1, borderColor: colors.borderStrong }, prefix: { marginRight: 7, fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.secondary }, input: { flex: 1, minHeight: 48, paddingVertical: 10, fontFamily: fonts.body, fontSize: 15, color: colors.ink }, decimalButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, decimal: { marginTop: -8, fontFamily: fonts.bodyBold, fontSize: 26, color: colors.ink }, helper: { marginTop: -8, fontFamily: fonts.body, fontSize: 10, lineHeight: 15, color: colors.secondary }, switchRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 12 }, switchTitle: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.ink }, switchDetail: { marginTop: 3, fontFamily: fonts.body, fontSize: 10, lineHeight: 15, color: colors.secondary }, warning: { padding: 11, flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: radius.sm, backgroundColor: colors.mustardSoft }, warningText: { flex: 1, fontFamily: fonts.body, fontSize: 11, lineHeight: 16, color: colors.ink }, confirm: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: radius.md, backgroundColor: colors.ink }, confirmText: { fontFamily: fonts.bodySemiBold, fontSize: 14, color: colors.paper }, disabled: { opacity: 0.5 }, secondaryActions: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 }, secondaryButton: { minHeight: 44, paddingHorizontal: 5, justifyContent: 'center' }, secondaryText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.accent }, skipText: { fontFamily: fonts.bodySemiBold, fontSize: 12, color: colors.danger },
 }));

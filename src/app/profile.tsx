@@ -4,7 +4,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'expo-router';
-import { Linking, Pressable, Switch, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, Switch, Text, View } from 'react-native';
 import { useAppDialog } from '@/components/AppDialog';
 import { AppScreen } from '@/components/AppScreen';
 import { PixelCat } from '@/components/PixelCat';
@@ -55,6 +55,17 @@ export default function ProfileScreen() {
   const shareExport = async () => {
     try {
       const contents = await exportData();
+      if (Platform.OS === 'web') {
+        const url = URL.createObjectURL(new Blob([contents], { type: 'application/json' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lifedesk-export-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        return;
+      }
       const path = `${FileSystem.documentDirectory}lifedesk-export-${new Date().toISOString().slice(0, 10)}.json`;
       await FileSystem.writeAsStringAsync(path, contents);
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: `Export ${APP_NAME} data` });
@@ -64,10 +75,10 @@ export default function ProfileScreen() {
     }
   };
 
-  const runRestore = async (uri: string) => {
+  const runRestore = async (uri: string, webFile?: File) => {
     setRestoring(true);
     try {
-      const contents = await FileSystem.readAsStringAsync(uri);
+      const contents = webFile ? await webFile.text() : await FileSystem.readAsStringAsync(uri);
       const summary = await importData(contents);
       const skipped = summary.skipped ? ` ${summary.skipped} unreadable ${summary.skipped === 1 ? 'record was' : 'records were'} skipped.` : '';
       showDialog({
@@ -93,7 +104,7 @@ export default function ProfileScreen() {
         tone: 'danger',
         actions: [
           { label: 'Cancel', variant: 'secondary' },
-          { label: 'Replace everything', variant: 'danger', onPress: () => void runRestore(file.uri) },
+          { label: 'Replace everything', variant: 'danger', onPress: () => void runRestore(file.uri, file.file) },
         ],
       });
     } catch (error) {
@@ -105,7 +116,7 @@ export default function ProfileScreen() {
     <AppScreen background={colors.background}>
       <ScreenHeader back />
       <PageHeader title="Settings" supporting="Preferences, connections, and local data." action={<PixelCat pose="idle" size={64} />} />
-      {!getOrganizerApiUrl() ? <View style={styles.notice}><Feather name="alert-circle" size={17} color={colors.accent} /><Text selectable style={styles.noticeText}>Add EXPO_PUBLIC_LIFEDESK_API_URL to .env to enable Gemini processing.</Text></View> : null}
+      {!getOrganizerApiUrl() ? <View style={styles.notice}><Feather name="alert-circle" size={17} color={colors.accent} /><Text selectable style={styles.noticeText}>The Assistant server is not configured for this build. Chat and voice requests are unavailable.</Text></View> : null}
 
       <Section title="Profile">
         <Setting icon="user" label="Zhyronne Batican" detail={`Level ${String(level).padStart(2, '0')} · ${totalXp} XP`} />
@@ -135,15 +146,15 @@ export default function ProfileScreen() {
         </View>
         <Setting icon="bell" label="Notifications" detail={notificationSaving ? 'Updating reminder schedules…' : notificationRuntimeAvailable ? 'Due-date reminders on this device' : 'Available in the installed mobile app'}><Switch accessibilityLabel="Notifications" accessibilityHint="Schedules or cancels due-date reminders on this device" disabled={!notificationRuntimeAvailable || notificationSaving} value={notificationRuntimeAvailable && notificationEnabled} onValueChange={(enabled) => void changeNotifications(enabled)} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
         <Setting icon="award" label="Momentum and XP" detail="Optional, never punitive"><Switch accessibilityLabel="Momentum and XP" value={rewardsEnabled} onValueChange={setRewardsEnabled} trackColor={{ false: colors.borderStrong, true: colors.accent }} thumbColor={colors.surface} /></Setting>
-        <Action icon="layout" label="Android widget" detail="Choose whether the home-screen widget may show your balance" onPress={() => router.push('/home-customize')} />
+        {Platform.OS === 'android' ? <Action icon="layout" label="Android widget" detail="Choose whether the home-screen widget may show your balance" onPress={() => router.push('/home-customize')} /> : null}
       </Section>
 
       <Section title="Data and privacy">
-        <Action icon="cpu" label="Check AI connection" detail={aiStatus} onPress={() => void checkAi()} />
+        <Action icon="cpu" label="Check Assistant connection" detail={aiStatus} onPress={() => void checkAi()} />
         <Action icon="download" label="Export data archive" detail="JSON copy of every local record, for safekeeping" onPress={shareExport} />
         <Action icon="upload" label={restoring ? 'Restoring backup…' : 'Restore from backup'} detail={restoring ? 'Rebuilding your local records' : 'Replaces all local data with a LifeDesk export file'} onPress={() => { if (!restoring) void chooseBackup(); }} />
         <Setting icon="hard-drive" label="Local storage" detail={`${dumps.length} recordings · ${items.length} items · ${projects.length} projects · ${transactions.length} money records`} />
-        <Action icon="shield" label="Privacy" detail="Audio is sent only when you process it" onPress={() => showDialog({ title: 'Privacy', message: 'Your records are stored locally in SQLite. Voice audio is sent to your configured Gemini backend only for processing. Financial suggestions require your review before they are saved.', tone: 'info' })} />
+        <Action icon="shield" label="Privacy" detail="See what stays local and what goes to the Assistant" onPress={() => showDialog({ title: 'Privacy', message: 'Your records are stored on this device. When you use the Assistant, your message or voice note and relevant saved records are sent to your configured Gemini backend. Suggested changes require your confirmation before they are saved.', tone: 'info' })} />
       </Section>
 
       <Section title="About">

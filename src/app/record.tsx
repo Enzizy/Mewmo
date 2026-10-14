@@ -1,7 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
+import Animated, { cancelAnimation, Easing, useAnimatedStyle, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { useAppDialog } from '@/components/AppDialog';
 import { RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, useAudioRecorder, useAudioRecorderState } from 'expo-audio';
 import { AppScreen } from '@/components/AppScreen';
@@ -38,7 +39,7 @@ export default function RecordScreen() {
     const start = async () => {
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        showDialog({ title: 'Microphone access needed', message: 'LifeDesk needs microphone permission to record. You can enable it in Android settings.', tone: 'warning' });
+        showDialog({ title: 'Microphone access needed', message: `LifeDesk needs microphone permission to record. You can enable it in ${Platform.OS === 'android' ? 'Android settings' : Platform.OS === 'ios' ? 'iPhone settings' : 'browser settings'}.`, tone: 'warning' });
         leave();
         return;
       }
@@ -93,20 +94,35 @@ export default function RecordScreen() {
       <View style={styles.heading}>
         <View style={styles.liveRow}><View style={[styles.liveDot, paused && styles.pausedDot]} /><Text style={styles.kicker}>{starting ? 'Preparing...' : paused ? 'Paused' : 'Listening...'}</Text></View>
         <Text style={styles.title}>Speak naturally.</Text>
-        <Text style={styles.support}>Ask a question or tell me what you need.</Text>
+        <Text style={styles.support}>Ask a question or tell me what you need. You can edit the words before sending.</Text>
       </View>
       <Pressable accessibilityRole="button" accessibilityLabel={paused ? 'Resume recording' : 'Pause recording'} onPress={togglePause} style={styles.visual}>
+        <PulseRing active={!starting && !paused} />
         <View style={styles.outerCircle}><View style={styles.innerCircle}><Waveform active={!starting && !paused} /></View></View>
       </Pressable>
       <Text style={styles.duration}>{formatTime(recorderState.durationMillis)}</Text>
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" disabled={starting || stopping} onPress={stopRecording} style={({ pressed }) => [styles.stop, (starting || stopping) && styles.disabled, pressed && styles.pressed]}>
-          <Feather name="check" size={18} color={colors.surface} /><Text style={styles.stopText}>{stopping ? 'Finishing...' : 'Use this recording'}</Text>
+          <Feather name="check" size={18} color={colors.surface} /><Text style={styles.stopText}>{stopping ? 'Finishing...' : 'Use in chat'}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={togglePause} style={styles.pause}><Text style={styles.pauseText}>Tap to {paused ? 'resume' : 'pause'}</Text></Pressable>
       </View>
     </AppScreen>
   );
+}
+
+/** A slow ring that breathes out from the microphone while it is live. */
+function PulseRing({ active }: { active: boolean }) {
+  const reduceMotion = useReducedMotion();
+  const progress = useSharedValue(0);
+  useEffect(() => {
+    if (!active || reduceMotion) { cancelAnimation(progress); progress.value = withTiming(0, { duration: 200 }); return undefined; }
+    progress.value = 0;
+    progress.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.out(Easing.quad) }), -1, false);
+    return () => cancelAnimation(progress);
+  }, [active, progress, reduceMotion]);
+  const style = useAnimatedStyle(() => ({ opacity: 0.45 * (1 - progress.value), transform: [{ scale: 1 + progress.value * 0.28 }] }));
+  return <Animated.View pointerEvents="none" style={[styles.pulse, style]} />;
 }
 
 const styles = themedStyles(() => ({
@@ -116,7 +132,8 @@ const styles = themedStyles(() => ({
   pausedDot: { backgroundColor: colors.mustard },
   kicker: { fontFamily: fonts.bodySemiBold, fontSize: 13, color: colors.secondary, letterSpacing: 0.4 },
   title: { marginTop: 12, fontFamily: fonts.bodyBold, fontSize: 32, color: colors.ink },
-  support: { marginTop: 5, fontFamily: fonts.body, fontSize: 15, color: colors.secondary },
+  support: { maxWidth: 300, marginTop: 6, textAlign: 'center', fontFamily: fonts.body, fontSize: 14, lineHeight: 20, color: colors.secondary },
+  pulse: { position: 'absolute', width: 228, height: 228, borderRadius: 114, backgroundColor: colors.terracottaSoft },
   visual: { flex: 1, minHeight: 260, alignItems: 'center', justifyContent: 'center' },
   outerCircle: { width: 228, height: 228, borderRadius: 114, borderWidth: 1, borderColor: colors.terracotta, padding: 15 },
   innerCircle: { flex: 1, borderRadius: 100, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' },

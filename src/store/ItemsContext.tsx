@@ -11,6 +11,7 @@ import {
   loadAppData,
   matchFinancialOccurrence,
   postponeFinancialOccurrence,
+  removePaymentCard,
   removeReviewProposal,
   removeSavingsGoal,
   removeThoughtItem,
@@ -24,6 +25,7 @@ import {
   saveInvestmentPurchase,
   saveMarketQuote,
   saveMonthlyBudget,
+  savePaymentCard,
   saveHomePreferences,
   saveProject,
   saveProjectSession,
@@ -57,6 +59,7 @@ import {
   MarketQuote,
   MonthlyBudget,
   OrganizedDump,
+  PaymentCard,
   PendingRecording,
   Project,
   ProjectSession,
@@ -79,7 +82,9 @@ import { localDateKey, localNoonIso, normalizeMonthlyDays } from '@/utils/recurr
 import { recurrenceForDate } from '@/utils/reminders';
 
 type ReminderInput = { title: string; detail?: string; dueAt: string; recurrence?: ReminderFrequency | null; enabled?: boolean };
-type TaskInput = { title: string; detail?: string };
+/** Everything about a card you can type in; ids and timestamps are managed here. */
+export type PaymentCardInput = Omit<PaymentCard, 'id' | 'createdAt' | 'updatedAt' | 'balanceUpdatedAt'>;
+type TaskInput = { title: string; detail?: string; dueAt?: string | null };
 type RecurringRuleInput = { kind: RecurringRuleKind; title: string; category: string; amountMinor: number; days: number[]; asset?: InvestmentAsset; startsOn?: string };
 type SavingsGoalInput = { name: string; targetMinor: number; savedMinor: number; paydayContributionMinor: number; targetDate?: string; active?: boolean };
 type OccurrenceConfirmationInput = { amountMinor: number; actualDate: string; quantity?: string; feesMinor?: number; note?: string; updateFutureAmount?: boolean };
@@ -139,6 +144,9 @@ type ItemsContextValue = AppDataSnapshot & {
   deleteGoal: (id: string) => Promise<void>;
   resolveGoalSuggestion: (id: string, status: 'confirmed' | 'skipped') => Promise<void>;
   updateHomePreferences: (preferences: HomePreferences) => Promise<void>;
+  saveCard: (input: PaymentCardInput, id?: string) => Promise<PaymentCard>;
+  updateCardBalance: (id: string, balanceMinor: number) => Promise<void>;
+  deleteCard: (id: string) => Promise<void>;
   setWalletSetup: (setup: WalletSetup) => Promise<void>;
   exportData: () => Promise<string>;
   importData: (text: string) => Promise<ImportSummary>;
@@ -147,7 +155,7 @@ type ItemsContextValue = AppDataSnapshot & {
 
 export type ImportSummary = { restored: number; description: string; skipped: number; exportedAt: string };
 
-const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, widgetBalancesVisible: false, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
+const EMPTY_DATA: AppDataSnapshot = { items: [], dumps: [], projects: [], projectSessions: [], transactions: [], investments: [], quotes: [], recurringRules: [], financialOccurrences: [], budgets: [], savingsGoals: [], goalSuggestions: [], reviewProposals: [], cards: [], homePreferences: { order: ['review', 'weather', 'money', 'goals', 'schedule', 'attention', 'coming-up', 'shortcuts'], hidden: [], compact: ['weather', 'schedule', 'attention', 'coming-up'], balancesVisible: true, widgetBalancesVisible: false, shortcuts: ['add-expense', 'add-reminder', 'currency', 'image-tools'] }, activity: [] };
 const NOTIFICATIONS_KEY = 'lifedesk.notifications';
 const REWARDS_KEY = 'lifedesk.rewards';
 const LEGACY_NOTIFICATIONS_KEY = 'mewmo.notifications';
@@ -180,6 +188,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   // and never have to reach into a state updater for the current record.
   const itemsRef = useRef(data.items);
   const dumpsRef = useRef(data.dumps);
+  const cardsRef = useRef(data.cards);
+  useEffect(() => { cardsRef.current = data.cards; }, [data.cards]);
   useEffect(() => { itemsRef.current = data.items; }, [data.items]);
   useEffect(() => { dumpsRef.current = data.dumps; }, [data.dumps]);
 
@@ -370,7 +380,9 @@ export function ItemsProvider({ children }: PropsWithChildren) {
   }, [refresh, rewardsEnabled]);
 
   const updateNotificationAwareItem = useCallback(async (id: string, transform: (item: ThoughtItem) => ThoughtItem, reward?: boolean) => {
-    const item = data.items.find((candidate) => candidate.id === id);
+    // Read the latest items, not this callback's render: an Undo captured
+    // before the first toggle landed must see the item as it is now.
+    const item = itemsRef.current.find((candidate) => candidate.id === id);
     if (!item) return;
     const next: ThoughtItem = { ...transform(item), notificationId: undefined };
     await cancelItemNotification(item.notificationId);
@@ -391,7 +403,7 @@ export function ItemsProvider({ children }: PropsWithChildren) {
       await refresh();
       throw error;
     }
-  }, [data.items, notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
+  }, [notificationEnabled, refresh, rewardsEnabled, scheduleNotificationForItem]);
 
   const deleteItem = useCallback((id: string) => {
     const item = itemsRef.current.find((candidate) => candidate.id === id);
@@ -430,10 +442,10 @@ export function ItemsProvider({ children }: PropsWithChildren) {
       category: 'task',
       title,
       detail: input.detail?.trim() || undefined,
-      dueAt: null,
+      dueAt: input.dueAt ?? null,
       createdAt,
-      dateLabel: dateLabelFor(createdAt),
-      time: timeLabelFor(createdAt),
+      dateLabel: dateLabelFor(input.dueAt ?? createdAt),
+      time: timeLabelFor(input.dueAt ?? createdAt),
       completed: false,
       subtasks: [],
     };
@@ -510,6 +522,49 @@ export function ItemsProvider({ children }: PropsWithChildren) {
 
   const updateTransaction = useCallback(async (id: string, input: TransactionEditInput) => {
     await updateFinancialTransactionRecord(id, input);
+    await refresh();
+  }, [refresh]);
+
+  const saveCard = useCallback(async (input: PaymentCardInput, id?: string) => {
+    const name = input.name.trim();
+    if (!name) throw new Error('Give the card a name, such as "BPI Gold" or "Payroll debit".');
+    if (!Number.isSafeInteger(input.balanceMinor) || input.balanceMinor < 0) throw new Error('Enter a valid balance of zero or more.');
+    if (input.last4 && !/^\d{4}$/.test(input.last4)) throw new Error('Enter exactly the last 4 digits, or leave them blank.');
+    if (input.creditLimitMinor != null && (!Number.isSafeInteger(input.creditLimitMinor) || input.creditLimitMinor < 0)) throw new Error('Enter a valid credit limit.');
+    const existing = id ? cardsRef.current.find((card) => card.id === id) : undefined;
+    if (id && !existing) throw new Error('This card no longer exists.');
+    const now = new Date().toISOString();
+    const credit = input.kind === 'credit';
+    const card: PaymentCard = {
+      ...input,
+      id: existing?.id ?? createId('card'),
+      name,
+      issuer: input.issuer?.trim() || undefined,
+      note: input.note?.trim() || undefined,
+      creditLimitMinor: credit ? input.creditLimitMinor : undefined,
+      dueDay: credit ? input.dueDay : undefined,
+      statementDay: credit ? input.statementDay : undefined,
+      // The "updated" time describes the balance, so only a new balance moves it.
+      balanceUpdatedAt: existing && existing.balanceMinor === input.balanceMinor ? existing.balanceUpdatedAt : now,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await savePaymentCard(card);
+    await refresh();
+    return card;
+  }, [refresh]);
+
+  const updateCardBalance = useCallback(async (id: string, balanceMinor: number) => {
+    const card = cardsRef.current.find((candidate) => candidate.id === id);
+    if (!card) throw new Error('This card no longer exists.');
+    if (!Number.isSafeInteger(balanceMinor) || balanceMinor < 0) throw new Error('Enter a valid balance of zero or more.');
+    const now = new Date().toISOString();
+    await savePaymentCard({ ...card, balanceMinor, balanceUpdatedAt: now, updatedAt: now });
+    await refresh();
+  }, [refresh]);
+
+  const deleteCard = useCallback(async (id: string) => {
+    await removePaymentCard(id);
     await refresh();
   }, [refresh]);
 
@@ -719,8 +774,8 @@ export function ItemsProvider({ children }: PropsWithChildren) {
     toggleSubtask: (itemId, subtaskId) => updateItem(itemId, (item) => ({ ...item, subtasks: item.subtasks?.map((subtask) => subtask.id === subtaskId ? { ...subtask, completed: !subtask.completed } : subtask) })),
     addProject, addProjectHandoff, addTransaction, updateTransaction, deleteTransaction, addInvestment, updateQuote, refreshMarketQuotes,
     addRecurringRule, updateRecurringRule, toggleRecurringRule, deleteRecurringRule, confirmOccurrence, matchOccurrence, skipOccurrence, postponeOccurrence,
-    saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, setWalletSetup, exportData: exportAppData, importData, reload,
-  }), [addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTask, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, importData, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, reload, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder, updateTransaction]);
+    saveBudget, deleteBudget, saveGoal, deleteGoal, resolveGoalSuggestion, updateHomePreferences, saveCard, updateCardBalance, deleteCard, setWalletSetup, exportData: exportAppData, importData, reload,
+  }), [saveCard, updateCardBalance, deleteCard, addInvestment, addProject, addProjectHandoff, addRecurringRule, addReminder, addTask, addTransaction, confirmOrganizedDump, confirmOccurrence, confirmReviewProposal, data, deleteBudget, deleteDump, deleteGoal, deleteItem, deleteRecurringRule, deleteTransaction, discardReviewProposal, hydrated, importData, latestItemIds, level, marketRefreshError, matchOccurrence, notificationEnabled, pendingOrganizedDump, pendingRecording, postponeOccurrence, processingError, queueReviewProposal, refreshMarketQuotes, reload, resolveGoalSuggestion, rewardsEnabled, saveBudget, saveGoal, scheduleTomorrow, setNotificationEnabled, setRewardsEnabled, setWalletSetup, skipOccurrence, toggleRecurringRule, toggleReminderEnabled, totalXp, updateHomePreferences, updateItem, updateNotificationAwareItem, updateQuote, updateRecurringRule, updateReminder, updateTransaction]);
 
   return <ItemsContext.Provider value={value}>{children}</ItemsContext.Provider>;
 }

@@ -182,11 +182,12 @@ export function useAppDialog() {
   return value;
 }
 
+// Getters keep tone colors on the active theme rather than the one at import.
 const toneStyles: Record<AppDialogTone, { icon: keyof typeof Feather.glyphMap; soft: string; strong: string }> = {
-  info: { icon: 'info', soft: colors.accentSoft, strong: colors.accent },
-  warning: { icon: 'alert-triangle', soft: colors.mustardSoft, strong: colors.mustard },
-  danger: { icon: 'alert-octagon', soft: colors.dangerSoft, strong: colors.danger },
-  success: { icon: 'check', soft: colors.greenSoft, strong: colors.green },
+  get info() { return { icon: 'info' as const, soft: colors.accentSoft, strong: colors.accent }; },
+  get warning() { return { icon: 'alert-triangle' as const, soft: colors.mustardSoft, strong: colors.mustard }; },
+  get danger() { return { icon: 'alert-octagon' as const, soft: colors.dangerSoft, strong: colors.danger }; },
+  get success() { return { icon: 'check' as const, soft: colors.greenSoft, strong: colors.green }; },
 };
 
 const styles = themedStyles(() => ({

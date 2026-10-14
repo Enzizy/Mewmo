@@ -67,7 +67,7 @@ export default function WalletActivityScreen() {
       keyExtractor={(item) => item.id}
       estimatedRowHeight={76}
       header={header}
-      empty={<View style={styles.listTop}><View style={styles.empty}><View style={styles.emptyIcon}><Feather name="credit-card" size={21} color={colors.muted} /></View><View style={styles.emptyMain}><Text style={styles.emptyTitle}>No money records yet</Text><Text style={styles.emptyText}>Add your current cash as income, then LifeDesk can calculate the wallet total from real records.</Text></View></View></View>}
+      empty={<View style={styles.listTop}><View style={styles.empty}><View style={styles.emptyIcon}><Feather name="credit-card" size={21} color={colors.muted} /></View><View style={styles.emptyMain}><Text style={styles.emptyTitle}>No money activity yet</Text><Text style={styles.emptyText}>Set your opening balance in Wallet, then record income and expenses here as they happen.</Text></View></View></View>}
       renderItem={({ item }) => <TransactionRow item={item} onEdit={edit} onDelete={remove} />}
     />
   );
